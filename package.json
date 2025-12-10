@@ -1,0 +1,11 @@
+{
+  "name": "In-silico-synth",
+  "version": "1.0.0",
+  "description": "Draggable Circles interactive project",
+  "scripts": {
+    "dev": "npx http-server -p 3001 -o"
+  },
+  "devDependencies": {
+    "http-server": "^14.1.1"
+  }
+}

@@ -223,6 +223,14 @@
         transition: opacity 0.3s ease;
       }
 
+      .inner-dot.bacillus {
+        width: 32px;
+        height: 16px;
+        border-radius: 50%;
+        margin-left: -16px;
+        margin-top: -8px;
+      }
+
       .inner-dot:hover {
         box-shadow: 0 0 15px currentColor;
       }
@@ -242,6 +250,9 @@
 
       .top-right .corner-dot {
         background-color: #f57023;
+        width: 32px;
+        height: 16px;
+        border-radius: 50%;
       }
 
       .bottom-left .corner-dot {
@@ -254,6 +265,9 @@
 
       .left-margin .corner-dot {
         background-color: #9b59b6;
+        width: 32px;
+        height: 16px;
+        border-radius: 50%;
       }
 
       .right-margin .corner-dot {
@@ -494,6 +508,21 @@
         return isChainFormingColorString(c);
       }
 
+      // Check if a color is orange or purple (bacillus-shaped)
+      function isBacillusColor(colorStr) {
+        if (!colorStr) return false;
+        const normalized = normalizeColorString(colorStr);
+        const hexKey = getCanonicalColorKey(colorStr);
+        return (
+          hexKey === "#f57023" ||
+          hexKey === "#9b59b6" ||
+          normalized === "rgb(245, 112, 35)" ||
+          normalized === "rgba(245, 112, 35, 1)" ||
+          normalized === "rgb(155, 89, 182)" ||
+          normalized === "rgba(155, 89, 182, 1)"
+        );
+      }
+
       // Get the canonical color key from an element (for use as dictionary key)
       function getDotColor(el) {
         const colorStr = window.getComputedStyle(el).backgroundColor;
@@ -554,6 +583,8 @@
           container.classList.contains("bottom-left") ||
           container.classList.contains("left-margin");
         const isLeftMargin = container.classList.contains("left-margin");
+        const isTopRight = container.classList.contains("top-right");
+        const isBacillus = isLeftMargin || isTopRight;
 
         const data = {
           x: Math.random() * 60,
@@ -570,6 +601,8 @@
           bounds: isLeftMargin
             ? { minX: -20, maxX: 100, minY: -100, maxY: 100 }
             : { minX: -20, maxX: 100, minY: -20, maxY: 100 },
+          rotation: isBacillus ? Math.random() * Math.PI * 2 : 0,
+          rotationSpeed: isBacillus ? (Math.random() - 0.5) * 0.01 : 0,
         };
         dotMovement.set(dot, data);
         updateCornerDotPosition(dot);
@@ -577,6 +610,13 @@
 
       function initInnerMovement(dot, startX = 0, startY = 0) {
         const maxRadius = 350;
+        const color = window.getComputedStyle(dot).backgroundColor;
+        const isBacillus = isBacillusColor(color);
+
+        if (isBacillus) {
+          dot.classList.add("bacillus");
+        }
+
         const data = {
           x: startX,
           y: startY,
@@ -588,6 +628,8 @@
           opacityDir: Math.random() > 0.5 ? 1 : -1,
           speed: 0.25 + Math.random() * 0.5,
           maxRadius: maxRadius,
+          rotation: isBacillus ? Math.random() * Math.PI * 2 : 0,
+          rotationSpeed: isBacillus ? (Math.random() - 0.5) * 0.01 : 0,
         };
         dotMovement.set(dot, data);
         updateInnerDotPosition(dot);
@@ -650,7 +692,21 @@
           data.opacityDir = 1;
         }
 
-        dot.style.transform = `translate(${data.x}px, ${data.y}px)`;
+        // Update rotation for bacillus-shaped dots
+        if (data.rotationSpeed !== undefined && data.rotationSpeed !== 0) {
+          data.rotation += data.rotationSpeed;
+          data.rotationSpeed += (Math.random() - 0.5) * 0.001;
+          data.rotationSpeed = Math.max(
+            -0.02,
+            Math.min(0.02, data.rotationSpeed)
+          );
+          if (data.rotation >= Math.PI * 2) data.rotation -= Math.PI * 2;
+          if (data.rotation < 0) data.rotation += Math.PI * 2;
+        }
+
+        const rotation =
+          data.rotation !== undefined ? ` rotate(${data.rotation}rad)` : "";
+        dot.style.transform = `translate(${data.x}px, ${data.y}px)${rotation}`;
         dot.style.opacity = data.opacity;
       }
 
@@ -703,9 +759,24 @@
           data.opacityDir = 1;
         }
 
+        // Update rotation for bacillus-shaped dots
+        if (data.rotationSpeed !== undefined && data.rotationSpeed !== 0) {
+          data.rotation += data.rotationSpeed;
+          data.rotationSpeed += (Math.random() - 0.5) * 0.001;
+          data.rotationSpeed = Math.max(
+            -0.02,
+            Math.min(0.02, data.rotationSpeed)
+          );
+          if (data.rotation >= Math.PI * 2) data.rotation -= Math.PI * 2;
+          if (data.rotation < 0) data.rotation += Math.PI * 2;
+        }
+
         dot.style.left = data.x + "px";
         dot.style.top = data.y + "px";
         dot.style.opacity = data.opacity;
+        if (data.rotation !== undefined) {
+          dot.style.transform = `rotate(${data.rotation}rad)`;
+        }
       }
 
       // ================== circle helpers ==================
@@ -733,6 +804,11 @@
         const dotColor = getDotColor(dot);
         if (!dotColor) return;
 
+        const isBacillus = isBacillusColor(dotColor);
+        if (isBacillus) {
+          dot.classList.add("bacillus");
+        }
+
         const initialAngle = Math.random() * Math.PI * 2;
         const speed = 0.8 + Math.random() * 0.6;
         const node = {
@@ -744,6 +820,8 @@
           ),
           opacity: 0.5 + Math.random() * 0.5,
           opacityDir: Math.random() > 0.5 ? 1 : -1,
+          rotation: isBacillus ? Math.random() * Math.PI * 2 : 0,
+          rotationSpeed: isBacillus ? (Math.random() - 0.5) * 0.01 : 0,
         };
 
         // Initialize chains array for this color if it doesn't exist
@@ -769,6 +847,12 @@
         newDot.className = "inner-dot";
         newDot.style.backgroundColor = color;
         newDot.style.setProperty("--i", innerDotCounter);
+
+        // Check if this is orange or purple and add bacillus class
+        if (isBacillusColor(color)) {
+          newDot.classList.add("bacillus");
+        }
+
         innerDotsContainer.appendChild(newDot);
 
         newDot.style.left = x + "px";
@@ -791,12 +875,16 @@
           const dir = vNorm(headVel);
           const newPos = vAdd(head, vMul(dir, -CHAIN_SPACING));
           const el = createChainDotElement(newPos.x, newPos.y, chain.color);
+          const isBacillus =
+            chain.color === "#f57023" || chain.color === "#9b59b6";
           dots.push({
             el,
             pos: newPos,
             vel: vMul(headVel, 0.9), // slightly slower than head
             opacity: 0.5 + Math.random() * 0.5,
             opacityDir: Math.random() > 0.5 ? 1 : -1,
+            rotation: isBacillus ? Math.random() * Math.PI * 2 : 0,
+            rotationSpeed: isBacillus ? (Math.random() - 0.5) * 0.01 : 0,
           });
           return;
         }
@@ -808,12 +896,15 @@
           const dir = vNorm(headVel);
           const newPos = vAdd(head, vMul(dir, CHAIN_SPACING));
           const el = createChainDotElement(newPos.x, newPos.y, chain.color);
+          const isBacillus = isBacillusColor(chain.color);
           dots.unshift({
             el,
             pos: newPos,
             vel: vMul(headVel, 1.1), // slightly faster than current head
             opacity: 0.5 + Math.random() * 0.5,
             opacityDir: Math.random() > 0.5 ? 1 : -1,
+            rotation: isBacillus ? Math.random() * Math.PI * 2 : 0,
+            rotationSpeed: isBacillus ? (Math.random() - 0.5) * 0.01 : 0,
           });
         } else {
           const tail = dots[dots.length - 1].pos;
@@ -821,12 +912,16 @@
           const dir = vNorm(tailVel);
           const newPos = vAdd(tail, vMul(dir, -CHAIN_SPACING));
           const el = createChainDotElement(newPos.x, newPos.y, chain.color);
+          const isBacillus =
+            chain.color === "#f57023" || chain.color === "#9b59b6";
           dots.push({
             el,
             pos: newPos,
             vel: vMul(tailVel, 0.9), // slightly slower than tail
             opacity: 0.5 + Math.random() * 0.5,
             opacityDir: Math.random() > 0.5 ? 1 : -1,
+            rotation: isBacillus ? Math.random() * Math.PI * 2 : 0,
+            rotationSpeed: isBacillus ? (Math.random() - 0.5) * 0.01 : 0,
           });
         }
       }
@@ -1103,6 +1198,22 @@
               node.el.style.left = node.pos.x + "px";
               node.el.style.top = node.pos.y + "px";
               node.el.style.opacity = node.opacity;
+
+              // Update rotation for bacillus-shaped chain dots
+              if (
+                node.rotationSpeed !== undefined &&
+                node.rotationSpeed !== 0
+              ) {
+                node.rotation += node.rotationSpeed;
+                node.rotationSpeed += (Math.random() - 0.5) * 0.001;
+                node.rotationSpeed = Math.max(
+                  -0.02,
+                  Math.min(0.02, node.rotationSpeed)
+                );
+                if (node.rotation >= Math.PI * 2) node.rotation -= Math.PI * 2;
+                if (node.rotation < 0) node.rotation += Math.PI * 2;
+                node.el.style.transform = `rotate(${node.rotation}rad)`;
+              }
             }
 
             // Growth - only for the active spawn color
@@ -1163,6 +1274,15 @@
         newDot.style.backgroundColor = finalColor;
         newDot.style.setProperty("--i", innerDotCounter);
 
+        // Check if this is orange or purple and add bacillus class
+        const colorStr =
+          typeof finalColor === "string"
+            ? finalColor
+            : window.getComputedStyle(newDot).backgroundColor;
+        if (isBacillusColor(colorStr)) {
+          newDot.classList.add("bacillus");
+        }
+
         innerDotsContainer.appendChild(newDot);
 
         if (isChainFormingColorString(finalColor)) {
@@ -1216,7 +1336,12 @@
         activeDot.style.position = "fixed";
         activeDot.style.left = dotStartX + "px";
         activeDot.style.top = dotStartY + "px";
-        activeDot.style.transform = "scale(1.3)";
+        const data = dotMovement.get(activeDot);
+        const rotation =
+          data && data.rotation !== undefined
+            ? ` rotate(${data.rotation}rad)`
+            : "";
+        activeDot.style.transform = `scale(1.3)${rotation}`;
       }
 
       function onTouchStart(e) {
@@ -1240,7 +1365,12 @@
         activeDot.style.position = "fixed";
         activeDot.style.left = dotStartX + "px";
         activeDot.style.top = dotStartY + "px";
-        activeDot.style.transform = "scale(1.3)";
+        const data = dotMovement.get(activeDot);
+        const rotation =
+          data && data.rotation !== undefined
+            ? ` rotate(${data.rotation}rad)`
+            : "";
+        activeDot.style.transform = `scale(1.3)${rotation}`;
       }
 
       function onMouseMove(e) {

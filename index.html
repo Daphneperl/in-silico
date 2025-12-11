@@ -100,7 +100,6 @@
           transparent 70%
         );
         pointer-events: none;
-        animation: shimmer 8s ease-in-out infinite;
       }
 
       /* Secondary highlight */
@@ -279,6 +278,43 @@
         z-index: 1000;
         pointer-events: auto;
       }
+
+      /* Ethanol button styles */
+      #ethanol-button {
+        position: fixed;
+        top: 10px;
+        left: 51%;
+        transform: translateX(-50%);
+        width: 100px;
+        height: 100px;
+        border: none;
+        background: transparent;
+        background-image: url("assets/ethanol.webp");
+        background-size: contain;
+        background-repeat: no-repeat;
+        background-position: center;
+        cursor: pointer;
+        z-index: 1000;
+        pointer-events: auto;
+        display: none;
+        opacity: 0;
+        transition: opacity 0.5s ease;
+        filter: drop-shadow(0 0 15px rgba(135, 206, 250, 0.5))
+          drop-shadow(0 0 30px rgba(22, 19, 81, 0.6));
+      }
+
+      #ethanol-button.show {
+        display: block;
+        opacity: 1;
+      }
+
+      #ethanol-button:hover {
+        filter: drop-shadow(0 0 25px rgba(135, 206, 250, 1))
+          drop-shadow(0 0 50px rgba(255, 255, 255, 0.8))
+          drop-shadow(0 0 75px rgba(255, 255, 255, 0.6));
+        transform: translateX(-50%) scale(1.1);
+        transition: filter 0.3s ease, transform 0.3s ease;
+      }
     </style>
   </head>
   <body>
@@ -418,6 +454,9 @@
 
     <!-- Play button -->
     <button id="play-button" aria-label="Play audio">▶</button>
+
+    <!-- Ethanol button -->
+    <button id="ethanol-button" aria-label="Ethanol"></button>
 
     <script>
       // ================== helpers & globals ==================
@@ -1362,8 +1401,8 @@
 
       // Function to play all tracks
       function playAllTracks() {
-        // Set initial volumes: track 1 unmuted, tracks 2-7 muted
-        audioPlayers[0].volume = 1.0; // Track 1 always unmuted
+        // Set initial volumes: track 1 at lower volume, tracks 2-7 muted
+        audioPlayers[0].volume = 0.5; // Track 1 at 50% volume
         for (let i = 1; i < audioPlayers.length; i++) {
           audioPlayers[i].volume = 0.0; // Tracks 2-7 start muted
         }
@@ -1386,6 +1425,26 @@
         playButton.innerHTML = "▶";
       }
 
+      // Ethanol button
+      const ethanolButton = document.getElementById("ethanol-button");
+
+      // Function to empty the bubble
+      function emptyBubble() {
+        // Remove all inner dots from the DOM
+        const innerDots = document.querySelectorAll(".inner-dot");
+        innerDots.forEach((dot) => {
+          dot.remove();
+        });
+
+        // Clear all chains
+        chainsByColor = {};
+      }
+
+      // Ethanol button click handler
+      ethanolButton.addEventListener("click", function () {
+        emptyBubble();
+      });
+
       // Play button click handler
       playButton.addEventListener("click", function () {
         if (isPlaying) {
@@ -1394,6 +1453,11 @@
           playAllTracks();
           // Hide the play button after clicking
           playButton.style.display = "none";
+
+          // Show ethanol button after 20 seconds
+          setTimeout(() => {
+            ethanolButton.classList.add("show");
+          }, 10000);
         }
       });
 
@@ -1412,9 +1476,9 @@
 
       // ================== track volume control by dot color ==================
 
-      // Check which dot colors are currently inside the bubble
+      // Check which dot colors are currently inside the bubble and count them
       function checkDotsInBubble() {
-        const activeColors = new Set();
+        const colorCounts = new Map();
         const innerDots = document.querySelectorAll(".inner-dot");
 
         innerDots.forEach((dot) => {
@@ -1425,24 +1489,29 @@
           if (isPointInCircle(centerX, centerY)) {
             const color = getDotColor(dot);
             if (color && COLOR_TO_TRACK_MAP.hasOwnProperty(color)) {
-              activeColors.add(color);
+              const currentCount = colorCounts.get(color) || 0;
+              colorCounts.set(color, currentCount + 1);
             }
           }
         });
 
-        return activeColors;
+        return colorCounts;
       }
 
-      // Update track volumes based on which dot colors are in the bubble
+      // Update track volumes based on number of dots of each color in the bubble
+      // Maximum volume is 20 units (volume = count / 20, capped at 1.0)
       function updateTrackVolumes() {
         if (!isPlaying) return;
 
-        const activeColors = checkDotsInBubble();
+        const colorCounts = checkDotsInBubble();
+        const MAX_VOLUME_UNITS = 20;
 
-        // Update tracks 2-7 based on active colors
+        // Update tracks 2-7 based on dot counts
         for (const [color, trackIndex] of Object.entries(COLOR_TO_TRACK_MAP)) {
           const audio = audioPlayers[trackIndex];
-          audio.volume = activeColors.has(color) ? 1.0 : 0.0;
+          const count = colorCounts.get(color) || 0;
+          // Calculate volume: count / 20, capped at 1.0
+          audio.volume = Math.min(count / MAX_VOLUME_UNITS, 1.0);
         }
       }
 

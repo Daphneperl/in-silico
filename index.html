@@ -1343,6 +1343,7 @@
 
       for (let i = 1; i <= trackCount; i++) {
         const audio = new Audio(`assets/music/${i}track.mp3`);
+        audio.playbackRate = 0.75; // Slow down all tracks to 75% speed
         audioPlayers.push(audio);
       }
 

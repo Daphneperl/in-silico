@@ -204,9 +204,48 @@
           filter 0.3s ease,
           transform 0.3s ease;
       }
+
+      #loader {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        background: #000;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        transition: opacity 0.8s ease;
+      }
+
+      #loader::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: url("assets/background.png") center / cover no-repeat;
+        opacity: 0.2;
+      }
+
+      #loader.fade-out {
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      #loader img {
+        width: 400px;
+        height: auto;
+        animation: loader-pulse 2s ease-in-out infinite;
+      }
+
+      @keyframes loader-pulse {
+        0%, 100% { opacity: 0.6; transform: scale(1); }
+        50% { opacity: 1; transform: scale(1.05); }
+      }
     </style>
   </head>
   <body>
+    <div id="loader">
+      <img src="assets/microbe_gifs/bac1_1.gif" alt="Loading…" />
+    </div>
+
     <div id="main-content">
       <div class="pixelated-circle">
         <div id="inner-dots"></div>
@@ -250,7 +289,7 @@
     <script>
       (function () {
         const circle = document.querySelector(".pixelated-circle");
-        const rb = () => 30 + Math.random() * 40;
+        const rb = () => 40 + Math.random() * 20;
         circle.style.borderRadius =
           `${rb()}% ${rb()}% ${rb()}% ${rb()}% / ${rb()}% ${rb()}% ${rb()}% ${rb()}%`;
         const innerDotsContainer = document.getElementById("inner-dots");
@@ -890,6 +929,19 @@
           });
           document.addEventListener("touchend", onEnd);
           animate();
+        });
+
+        var loaderStart = Date.now();
+        window.addEventListener("load", function () {
+          var elapsed = Date.now() - loaderStart;
+          var remaining = Math.max(0, 3000 - elapsed);
+          setTimeout(function () {
+            var loader = document.getElementById("loader");
+            loader.classList.add("fade-out");
+            loader.addEventListener("transitionend", function () {
+              loader.remove();
+            });
+          }, remaining);
         });
       })();
     </script>

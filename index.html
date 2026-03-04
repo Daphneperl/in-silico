@@ -47,7 +47,7 @@
       .pixelated-circle {
         width: 800px;
         height: 800px;
-        border-radius: 50%;
+        border-radius: 42% 58% 33% 67% / 55% 38% 62% 45%;
         position: relative;
         flex-shrink: 0;
         pointer-events: none;
@@ -59,7 +59,7 @@
           rgba(180, 180, 180, 0.15) 70%,
           rgba(120, 120, 120, 0.1) 100%
         );
-        border: 2px solid rgba(255, 255, 255, 0.3);
+
         box-shadow:
           0 0 40px rgba(160, 160, 160, 0.3),
           inset 0 0 60px rgba(255, 255, 255, 0.1);
@@ -250,6 +250,9 @@
     <script>
       (function () {
         const circle = document.querySelector(".pixelated-circle");
+        const rb = () => 30 + Math.random() * 40;
+        circle.style.borderRadius =
+          `${rb()}% ${rb()}% ${rb()}% ${rb()}% / ${rb()}% ${rb()}% ${rb()}% ${rb()}%`;
         const innerDotsContainer = document.getElementById("inner-dots");
 
         const MICROBE_VARIANTS = {
@@ -490,7 +493,13 @@
           img.style.opacity = data.opacity;
         }
 
-        function createInnerMicrobe(src, offsetX, offsetY, trackIndex, insertBeforeNode) {
+        function createInnerMicrobe(
+          src,
+          offsetX,
+          offsetY,
+          trackIndex,
+          insertBeforeNode
+        ) {
           const img = document.createElement("img");
           img.className = "inner-microbe";
           img.src = src;

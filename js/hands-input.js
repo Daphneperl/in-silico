@@ -333,7 +333,12 @@ async function startCamera() {
 
   try {
     const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: "user", width: 1280, height: 720 },
+      video: {
+        facingMode: "user",
+        width: { ideal: 640 },
+        height: { ideal: 480 },
+        frameRate: { ideal: 24, max: 30 },
+      },
       audio: false,
     });
     video.srcObject = stream;
@@ -370,5 +375,3 @@ window.addEventListener("resize", resizeDebugCanvas);
 window.addEventListener("keydown", function (e) {
   if (e.key === "d" || e.key === "D") toggleDebug();
 });
-
-loadLandmarker().catch(function () {});

@@ -230,25 +230,6 @@
         transform-origin: center center;
       }
 
-      #play-button {
-        position: fixed;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        width: 60px;
-        height: 60px;
-        border: none;
-        background: transparent;
-        color: white;
-        font-size: 40px;
-        cursor: pointer;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        z-index: 1000;
-        pointer-events: auto;
-      }
-
       #ethanol-button {
         position: fixed;
         top: 10px;
@@ -377,7 +358,6 @@
       id="corner-rm"
     ></div>
 
-    <button id="play-button" aria-label="Play audio">▶</button>
     <button id="ethanol-button" aria-label="Ethanol - revert everything"></button>
 
     <script>
@@ -931,7 +911,6 @@
         }
 
         // ================== audio player (same logic as index.html) ==================
-        const playButton = document.getElementById("play-button");
         const audioPlayers = [];
         const trackCount = 7;
         var audioReady = false;
@@ -953,8 +932,6 @@
               endedCount++;
               if (endedCount === 6) {
                 isPlaying = false;
-                playButton.innerHTML = "▶";
-                playButton.style.display = "flex";
                 endedCount = 0;
               }
             });
@@ -974,16 +951,6 @@
             });
           });
           isPlaying = true;
-          playButton.innerHTML = "⏸";
-        }
-
-        function pauseAllTracks() {
-          audioPlayers.forEach(function (audio) {
-            audio.pause();
-          });
-          isPlaying = false;
-          playButton.innerHTML = "▶";
-          playButton.style.display = "flex";
         }
 
         function emptyBubble() {
@@ -1006,18 +973,6 @@
         var ethanolButton = document.getElementById("ethanol-button");
         ethanolButton.addEventListener("click", function () {
           emptyBubble();
-        });
-
-        playButton.addEventListener("click", function () {
-          if (isPlaying) {
-            pauseAllTracks();
-          } else {
-            playAllTracks();
-            playButton.style.display = "none";
-            setTimeout(function () {
-              ethanolButton.classList.add("show");
-            }, 10000);
-          }
         });
 
         function updateTrackVolumes() {
@@ -1153,6 +1108,10 @@
             window.startHandsCamera();
           }
           scheduleCornerDuplicates();
+          playAllTracks();
+          setTimeout(function () {
+            ethanolButton.classList.add("show");
+          }, 10000);
         }, 2000);
       })();
     </script>

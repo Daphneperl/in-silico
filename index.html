@@ -1212,6 +1212,10 @@
                   ? webcam.classList.add("active")
                   : webcam.classList.remove("active");
               }
+              // Store selected device
+              if (g.webcamDevice !== undefined) {
+                window.selectedWebcamDevice = g.webcamDevice;
+              }
             }
           }
         }

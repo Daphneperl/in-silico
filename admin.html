@@ -656,6 +656,13 @@
           </label>
         </div>
 
+        <div class="control-group" id="webcam-selector-group" style="display: none;">
+          <label>Camera Device</label>
+          <select id="webcam-device" onchange="updateGlobal()">
+            <option value="">Loading cameras...</option>
+          </select>
+        </div>
+
         <div class="control-group">
           <label class="checkbox-group">
             <input type="checkbox" id="hand-gesture-toggle" onchange="updateGlobal()" checked />
@@ -715,6 +722,15 @@
     // Initialize
     document.addEventListener("DOMContentLoaded", () => {
       loadSettings();
+
+      // Set up webcam selector visibility
+      const webcamToggle = document.getElementById('webcam-toggle');
+      const selector = document.getElementById('webcam-selector-group');
+      if (webcamToggle.checked) {
+        selector.style.display = 'flex';
+        enumerateWebcams();
+      }
+
       setInterval(syncSettings, SYNC_INTERVAL);
     });
 
@@ -756,6 +772,7 @@
           speedMultiplier: parseFloat(document.getElementById("global-speed").value),
           bgOpacity: parseInt(document.getElementById("bg-opacity").value),
           webcam: document.getElementById("webcam-toggle").checked,
+          webcamDevice: document.getElementById("webcam-device").value || "",
           handGestures: document.getElementById("hand-gesture-toggle").checked,
           sound: document.getElementById("sound-toggle").checked,
           handSensitivity: parseFloat(document.getElementById("hand-sensitivity").value),
@@ -818,6 +835,9 @@
         document.getElementById("global-speed").value = settings.global.speedMultiplier;
         document.getElementById("bg-opacity").value = settings.global.bgOpacity;
         document.getElementById("webcam-toggle").checked = settings.global.webcam;
+        if (settings.global.webcamDevice) {
+          document.getElementById("webcam-device").value = settings.global.webcamDevice;
+        }
         document.getElementById("hand-gesture-toggle").checked = settings.global.handGestures;
         document.getElementById("sound-toggle").checked = settings.global.sound;
         document.getElementById("hand-sensitivity").value = settings.global.handSensitivity;
@@ -990,6 +1010,45 @@
       el.style.display = "block";
       setTimeout(() => (el.style.display = "none"), 3000);
     }
+
+    async function enumerateWebcams() {
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = devices.filter(device => device.kind === 'videoinput');
+
+        const select = document.getElementById('webcam-device');
+        select.innerHTML = '';
+
+        if (videoDevices.length === 0) {
+          select.innerHTML = '<option value="">No cameras found</option>';
+          return;
+        }
+
+        videoDevices.forEach((device, index) => {
+          const option = document.createElement('option');
+          option.value = device.deviceId;
+          option.textContent = device.label || `Camera ${index + 1}`;
+          select.appendChild(option);
+        });
+      } catch (err) {
+        console.error('Error enumerating cameras:', err);
+        const select = document.getElementById('webcam-device');
+        select.innerHTML = '<option value="">Error accessing cameras</option>';
+      }
+    }
+
+    function toggleWebcamSelector() {
+      const isChecked = document.getElementById('webcam-toggle').checked;
+      const selector = document.getElementById('webcam-selector-group');
+      selector.style.display = isChecked ? 'flex' : 'none';
+
+      if (isChecked) {
+        enumerateWebcams();
+      }
+    }
+
+    // Initialize
+    document.getElementById('webcam-toggle').addEventListener('change', toggleWebcamSelector);
   </script>
 </body>
 </html>

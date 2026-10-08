@@ -413,13 +413,20 @@ async function startCamera() {
   setStatus("Starting camera…");
 
   try {
+    const videoConstraints = {
+      facingMode: "user",
+      width: { ideal: 640 },
+      height: { ideal: 480 },
+      frameRate: { ideal: 24, max: 30 },
+    };
+
+    // Add deviceId constraint if a specific camera was selected
+    if (window.selectedWebcamDevice) {
+      videoConstraints.deviceId = { exact: window.selectedWebcamDevice };
+    }
+
     const stream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: "user",
-        width: { ideal: 640 },
-        height: { ideal: 480 },
-        frameRate: { ideal: 24, max: 30 },
-      },
+      video: videoConstraints,
       audio: false,
     });
     video.srcObject = stream;

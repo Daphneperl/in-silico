@@ -123,9 +123,9 @@ function videoToScreen(lmX, lmY) {
   const ox = (sw - dw) / 2;
   const oy = (sh - dh) / 2;
 
-  // Don't flip coordinates - CSS scaleX(-1) handles the mirror
+  // Flip X for mirrored canvas (video is not mirrored)
   return {
-    x: lmX * dw + ox,
+    x: (1 - lmX) * dw + ox,
     y: lmY * dh + oy,
   };
 }

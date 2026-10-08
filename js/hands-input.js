@@ -122,10 +122,8 @@ function videoToScreen(lmX, lmY) {
   const dh = vh * scale;
   const ox = (sw - dw) / 2;
   const oy = (sh - dh) / 2;
-
-  // Don't flip coordinates - video is mirrored via CSS
   return {
-    x: lmX * dw + ox,
+    x: (1 - lmX) * dw + ox,
     y: lmY * dh + oy,
   };
 }
@@ -415,20 +413,13 @@ async function startCamera() {
   setStatus("Starting camera…");
 
   try {
-    const videoConstraints = {
-      facingMode: "user",
-      width: { ideal: 640 },
-      height: { ideal: 480 },
-      frameRate: { ideal: 24, max: 30 },
-    };
-
-    // Add deviceId constraint if a specific camera was selected
-    if (window.selectedWebcamDevice) {
-      videoConstraints.deviceId = { exact: window.selectedWebcamDevice };
-    }
-
     const stream = await navigator.mediaDevices.getUserMedia({
-      video: videoConstraints,
+      video: {
+        facingMode: "user",
+        width: { ideal: 640 },
+        height: { ideal: 480 },
+        frameRate: { ideal: 24, max: 30 },
+      },
       audio: false,
     });
     video.srcObject = stream;

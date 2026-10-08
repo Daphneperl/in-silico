@@ -123,11 +123,9 @@ function videoToScreen(lmX, lmY) {
   const ox = (sw - dw) / 2;
   const oy = (sh - dh) / 2;
 
-  // Account for 180° rotation on video element
-  // Both X and Y are flipped due to the rotation
   return {
     x: (1 - lmX) * dw + ox,
-    y: (1 - lmY) * dh + oy,
+    y: lmY * dh + oy,
   };
 }
 

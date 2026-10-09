@@ -1092,6 +1092,8 @@
           isPlaying = true;
         }
 
+        var cornerDupTimer = null;
+
         function emptyBubble() {
           var toRelease = [];
           grabs.forEach(function (el, id) {
@@ -1109,9 +1111,33 @@
           innerMicrobes.length = 0;
         }
 
+        function resetCorners() {
+          var toRelease = [];
+          grabs.forEach(function (el, id) {
+            if (el && !el.classList.contains("inner-microbe")) toRelease.push(id);
+          });
+          toRelease.forEach(function (id) {
+            var el = grabs.get(id);
+            grabs.delete(id);
+            if (el) el.classList.remove("dragging");
+          });
+          if (cornerDupTimer) {
+            clearInterval(cornerDupTimer);
+            cornerDupTimer = null;
+          }
+          for (var i = 0; i < cornerMicrobes.length; i++) {
+            microbeMovement.delete(cornerMicrobes[i]);
+            cornerMicrobes[i].remove();
+          }
+          cornerMicrobes.length = 0;
+          populateCorners();
+          scheduleCornerDuplicates();
+        }
+
         var ethanolButton = document.getElementById("ethanol-button");
         ethanolButton.addEventListener("click", function () {
           emptyBubble();
+          resetCorners();
         });
 
         function updateTrackVolumes() {
@@ -1214,9 +1240,11 @@
             extras[j] = tmp;
           }
           var idx = 0;
-          var timer = setInterval(function () {
+          if (cornerDupTimer) clearInterval(cornerDupTimer);
+          cornerDupTimer = setInterval(function () {
             if (idx >= extras.length) {
-              clearInterval(timer);
+              clearInterval(cornerDupTimer);
+              cornerDupTimer = null;
               return;
             }
             var item = extras[idx++];

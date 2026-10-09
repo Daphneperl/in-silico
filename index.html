@@ -16,6 +16,13 @@
         box-sizing: border-box;
       }
 
+      :root {
+        --bubble-scale: 1;
+        --bubble-y: 0px;
+        --ethanol-scale: 1;
+        --ethanol-y: 44px;
+      }
+
       body {
         min-height: 100vh;
         background: #000;
@@ -134,6 +141,8 @@
           0 0 40px rgba(160, 160, 160, 0.3),
           inset 0 0 60px rgba(255, 255, 255, 0.1);
         overflow: hidden;
+        transform: translateY(var(--bubble-y)) scale(var(--bubble-scale));
+        transform-origin: center center;
       }
 
       #inner-dots {
@@ -231,9 +240,9 @@
 
       #ethanol-button {
         position: fixed;
-        top: 44px;
+        top: var(--ethanol-y);
         left: 50%;
-        transform: translateX(-50%);
+        transform: translateX(-50%) scale(var(--ethanol-scale));
         width: 108px;
         height: 136px;
         border: none;
@@ -260,10 +269,57 @@
       #ethanol-button:hover {
         filter: drop-shadow(0 0 16px rgba(255, 255, 255, 1))
           drop-shadow(0 0 32px rgba(255, 255, 255, 0.8));
-        transform: translateX(-50%) scale(1.1);
+        transform: translateX(-50%) scale(calc(var(--ethanol-scale) * 1.1));
         transition:
           filter 0.3s ease,
           transform 0.3s ease;
+      }
+
+      #admin-panel {
+        display: none;
+        position: fixed;
+        top: 16px;
+        left: 16px;
+        z-index: 4000;
+        width: 240px;
+        padding: 14px 14px 12px;
+        background: rgba(0, 0, 0, 0.72);
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        color: rgba(255, 255, 255, 0.88);
+        font: 12px/1.4 sans-serif;
+        pointer-events: auto;
+      }
+
+      #admin-panel.open {
+        display: block;
+      }
+
+      #admin-panel h2 {
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        margin-bottom: 10px;
+      }
+
+      #admin-panel label {
+        display: block;
+        margin-bottom: 10px;
+      }
+
+      #admin-panel label span {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 4px;
+      }
+
+      #admin-panel em {
+        font-style: normal;
+        opacity: 0.7;
+      }
+
+      #admin-panel input[type="range"] {
+        width: 100%;
       }
 
       #loader {
@@ -358,6 +414,50 @@
     ></div>
 
     <button id="ethanol-button" aria-label="Ethanol - revert everything"></button>
+
+    <div id="admin-panel">
+      <h2>Layout</h2>
+      <label>
+        <span>Bubble scale <em data-admin-val="bubbleScale"></em></span>
+        <input
+          id="admin-bubble-scale"
+          type="range"
+          min="0.5"
+          max="1.6"
+          step="0.01"
+        />
+      </label>
+      <label>
+        <span>Bubble Y <em data-admin-val="bubbleY"></em></span>
+        <input
+          id="admin-bubble-y"
+          type="range"
+          min="-240"
+          max="240"
+          step="1"
+        />
+      </label>
+      <label>
+        <span>Ethanol scale <em data-admin-val="ethanolScale"></em></span>
+        <input
+          id="admin-ethanol-scale"
+          type="range"
+          min="0.5"
+          max="2"
+          step="0.01"
+        />
+      </label>
+      <label>
+        <span>Ethanol Y <em data-admin-val="ethanolY"></em></span>
+        <input
+          id="admin-ethanol-y"
+          type="range"
+          min="0"
+          max="280"
+          step="1"
+        />
+      </label>
+    </div>
 
     <script>
       (function () {
@@ -768,8 +868,13 @@
           if (grabs.has(id) && grabs.get(id) !== el) return false;
           el.classList.add("dragging");
           var rect = el.getBoundingClientRect();
-          el.dataset.offsetX = (clientX - rect.left).toString();
-          el.dataset.offsetY = (clientY - rect.top).toString();
+          if (id.indexOf("hand-") === 0) {
+            el.dataset.offsetX = (rect.width / 2).toString();
+            el.dataset.offsetY = (rect.height / 2).toString();
+          } else {
+            el.dataset.offsetX = (clientX - rect.left).toString();
+            el.dataset.offsetY = (clientY - rect.top).toString();
+          }
           grabs.set(id, el);
           applyDragPosition(el, clientX, clientY);
           return true;
@@ -782,6 +887,23 @@
             return;
           }
           applyDragPosition(el, clientX, clientY);
+        }
+
+        function depositGrab(id, clientX, clientY) {
+          var el = grabs.get(id);
+          if (!el) return;
+          grabs.delete(id);
+          if (!el.isConnected) return;
+          el.classList.remove("dragging");
+          if (el.classList.contains("inner-microbe")) return;
+          var x = clientX;
+          var y = clientY;
+          if (x == null || y == null) {
+            var rect = el.getBoundingClientRect();
+            x = rect.left + rect.width / 2;
+            y = rect.top + rect.height / 2;
+          }
+          moveToInnerCircle(el, x, y);
         }
 
         function endGrab(id) {
@@ -855,6 +977,7 @@
           startGrab: startGrab,
           moveGrab: moveGrab,
           endGrab: endGrab,
+          depositGrab: depositGrab,
           hitTestMicrobe: hitTestMicrobe,
           isInCircle: isPointInCircle,
           isGrabbing: function (id) {
@@ -1116,5 +1239,76 @@
       })();
     </script>
     <script type="module" src="js/hands-input.js"></script>
+    <script>
+      (function () {
+        var KEY = "synthLayout";
+        var defaults = {
+          bubbleScale: 1,
+          bubbleY: 0,
+          ethanolScale: 1,
+          ethanolY: 44,
+        };
+        var layout = load();
+        var panel = document.getElementById("admin-panel");
+        var fields = {
+          bubbleScale: document.getElementById("admin-bubble-scale"),
+          bubbleY: document.getElementById("admin-bubble-y"),
+          ethanolScale: document.getElementById("admin-ethanol-scale"),
+          ethanolY: document.getElementById("admin-ethanol-y"),
+        };
+
+        function load() {
+          try {
+            var raw = localStorage.getItem(KEY);
+            if (!raw) return Object.assign({}, defaults);
+            var parsed = JSON.parse(raw);
+            return Object.assign({}, defaults, parsed);
+          } catch (err) {
+            return Object.assign({}, defaults);
+          }
+        }
+
+        function save() {
+          try {
+            localStorage.setItem(KEY, JSON.stringify(layout));
+          } catch (err) {}
+        }
+
+        function apply() {
+          var root = document.documentElement;
+          root.style.setProperty("--bubble-scale", String(layout.bubbleScale));
+          root.style.setProperty("--bubble-y", layout.bubbleY + "px");
+          root.style.setProperty("--ethanol-scale", String(layout.ethanolScale));
+          root.style.setProperty("--ethanol-y", layout.ethanolY + "px");
+          Object.keys(fields).forEach(function (key) {
+            if (fields[key]) fields[key].value = layout[key];
+            var label = document.querySelector('[data-admin-val="' + key + '"]');
+            if (!label) return;
+            label.textContent =
+              key === "bubbleY" || key === "ethanolY"
+                ? Math.round(layout[key]) + "px"
+                : Number(layout[key]).toFixed(2);
+          });
+        }
+
+        Object.keys(fields).forEach(function (key) {
+          var input = fields[key];
+          if (!input) return;
+          input.addEventListener("input", function () {
+            layout[key] = parseFloat(input.value);
+            apply();
+            save();
+          });
+        });
+
+        apply();
+
+        window.addEventListener("keydown", function (e) {
+          if (e.key !== "q" && e.key !== "Q") return;
+          if (e.repeat) return;
+          panel.classList.toggle("open");
+        });
+      })();
+    </script>
   </body>
 </html>

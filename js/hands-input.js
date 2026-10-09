@@ -288,7 +288,8 @@ function processHands(result) {
       state.ethanolFrames = 0;
       api.moveGrab(slot, cursor.x, cursor.y);
       if (api.isInCircle && api.isInCircle(cursor.x, cursor.y)) {
-        api.endGrab(slot);
+        if (api.depositGrab) api.depositGrab(slot, cursor.x, cursor.y);
+        else api.endGrab(slot);
       }
       continue;
     }

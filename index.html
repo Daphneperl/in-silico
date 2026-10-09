@@ -281,7 +281,7 @@
         top: 16px;
         left: 16px;
         z-index: 4000;
-        width: 240px;
+        width: 260px;
         padding: 14px 14px 12px;
         background: rgba(0, 0, 0, 0.72);
         border: 1px solid rgba(255, 255, 255, 0.22);
@@ -318,8 +318,16 @@
         opacity: 0.7;
       }
 
-      #admin-panel input[type="range"] {
+      #admin-panel input[type="range"],
+      #admin-panel select {
         width: 100%;
+      }
+
+      #admin-panel select {
+        background: #111;
+        color: #fff;
+        border: 1px solid rgba(255, 255, 255, 0.28);
+        padding: 4px 6px;
       }
 
       #loader {
@@ -456,6 +464,12 @@
           max="280"
           step="1"
         />
+      </label>
+      <label>
+        <span>Webcam</span>
+        <select id="admin-webcam">
+          <option value="">Default</option>
+        </select>
       </label>
     </div>
 
@@ -1247,9 +1261,11 @@
           bubbleY: 0,
           ethanolScale: 1,
           ethanolY: 44,
+          webcamDevice: "",
         };
         var layout = load();
         var panel = document.getElementById("admin-panel");
+        var webcamSelect = document.getElementById("admin-webcam");
         var fields = {
           bubbleScale: document.getElementById("admin-bubble-scale"),
           bubbleY: document.getElementById("admin-bubble-y"),
@@ -1280,6 +1296,7 @@
           root.style.setProperty("--bubble-y", layout.bubbleY + "px");
           root.style.setProperty("--ethanol-scale", String(layout.ethanolScale));
           root.style.setProperty("--ethanol-y", layout.ethanolY + "px");
+          window.selectedWebcamDevice = layout.webcamDevice || "";
           Object.keys(fields).forEach(function (key) {
             if (fields[key]) fields[key].value = layout[key];
             var label = document.querySelector('[data-admin-val="' + key + '"]');
@@ -1289,6 +1306,35 @@
                 ? Math.round(layout[key]) + "px"
                 : Number(layout[key]).toFixed(2);
           });
+          if (webcamSelect) webcamSelect.value = layout.webcamDevice || "";
+        }
+
+        function fillWebcams() {
+          if (!webcamSelect || !navigator.mediaDevices) return Promise.resolve();
+          return navigator.mediaDevices
+            .enumerateDevices()
+            .then(function (devices) {
+              var cams = devices.filter(function (d) {
+                return d.kind === "videoinput";
+              });
+              var current = layout.webcamDevice || "";
+              webcamSelect.innerHTML = "";
+              var def = document.createElement("option");
+              def.value = "";
+              def.textContent = "Default";
+              webcamSelect.appendChild(def);
+              cams.forEach(function (cam, i) {
+                var opt = document.createElement("option");
+                opt.value = cam.deviceId;
+                opt.textContent = cam.label || "Camera " + (i + 1);
+                webcamSelect.appendChild(opt);
+              });
+              webcamSelect.value = current;
+              if (current && webcamSelect.value !== current) {
+                webcamSelect.value = "";
+              }
+            })
+            .catch(function () {});
         }
 
         Object.keys(fields).forEach(function (key) {
@@ -1302,11 +1348,27 @@
         });
 
         apply();
+        fillWebcams();
+        if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+          navigator.mediaDevices.addEventListener("devicechange", fillWebcams);
+        }
+
+        if (webcamSelect) {
+          webcamSelect.addEventListener("change", function () {
+            layout.webcamDevice = webcamSelect.value;
+            save();
+            window.selectedWebcamDevice = layout.webcamDevice;
+            if (typeof window.setHandsCamera === "function") {
+              window.setHandsCamera(layout.webcamDevice);
+            }
+          });
+        }
 
         window.addEventListener("keydown", function (e) {
           if (e.key !== "q" && e.key !== "Q") return;
           if (e.repeat) return;
           panel.classList.toggle("open");
+          if (panel.classList.contains("open")) fillWebcams();
         });
       })();
     </script>

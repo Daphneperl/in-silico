@@ -375,25 +375,8 @@ async function startCamera() {
   }
 
   setStatus("Starting camera…");
-
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: "user",
-        width: { ideal: 640 },
-        height: { ideal: 480 },
-        frameRate: { ideal: 24, max: 30 },
-      },
-      audio: false,
-    });
-    video.srcObject = stream;
-    video.classList.add("active");
-    await video.play();
-  } catch (err) {
-    video.classList.remove("active");
-    setStatus("Camera blocked — use mouse or touch");
-    return;
-  }
+  const started = await openCameraStream(savedDeviceId());
+  if (!started) return;
 
   try {
     await loadLandmarker();
@@ -407,6 +390,73 @@ async function startCamera() {
   detectLoop();
 }
 
+function savedDeviceId() {
+  if (window.selectedWebcamDevice) return window.selectedWebcamDevice;
+  try {
+    const parsed = JSON.parse(localStorage.getItem("synthLayout") || "{}");
+    return parsed.webcamDevice || "";
+  } catch (err) {
+    return "";
+  }
+}
+
+function videoConstraints(deviceId) {
+  const constraints = {
+    width: { ideal: 640 },
+    height: { ideal: 480 },
+    frameRate: { ideal: 24, max: 30 },
+  };
+  if (deviceId) constraints.deviceId = { exact: deviceId };
+  else constraints.facingMode = "user";
+  return constraints;
+}
+
+function stopCameraStream() {
+  if (!video || !video.srcObject) return;
+  video.srcObject.getTracks().forEach(function (track) {
+    track.stop();
+  });
+  video.srcObject = null;
+}
+
+async function openCameraStream(deviceId) {
+  if (!video) video = document.getElementById("webcam");
+  if (!video) return false;
+  stopCameraStream();
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: videoConstraints(deviceId),
+      audio: false,
+    });
+    video.srcObject = stream;
+    video.classList.add("active");
+    await video.play();
+    setStatus("");
+    return true;
+  } catch (err) {
+    video.classList.remove("active");
+    setStatus("Camera blocked — use mouse or touch");
+    return false;
+  }
+}
+
+async function setHandsCamera(deviceId) {
+  window.selectedWebcamDevice = deviceId || "";
+  const started = await openCameraStream(deviceId);
+  if (!started) return false;
+  if (!running) {
+    try {
+      await loadLandmarker();
+    } catch (err) {
+      setStatus("Hand tracking failed to load — use mouse or touch");
+      return false;
+    }
+    running = true;
+    detectLoop();
+  }
+  return true;
+}
+
 function toggleDebug() {
   debugOn = !debugOn;
   if (!debugOn && debugCtx && debugCanvas) {
@@ -415,6 +465,7 @@ function toggleDebug() {
 }
 
 window.startHandsCamera = startCamera;
+window.setHandsCamera = setHandsCamera;
 if (window._handsCameraRequested) startCamera();
 window.addEventListener("resize", resizeDebugCanvas);
 window.addEventListener("keydown", function (e) {

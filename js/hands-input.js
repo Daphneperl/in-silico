@@ -219,7 +219,8 @@ function smoothCursor(state, x, y) {
     return { x: x, y: y };
   }
   const dist = Math.hypot(x - state.smoothX, y - state.smoothY);
-  const alpha = dist > 80 ? 0.65 : dist > 20 ? 0.4 : 0.18;
+  if (dist < 6) return { x: state.smoothX, y: state.smoothY };
+  const alpha = dist > 140 ? 0.42 : dist > 50 ? 0.18 : 0.07;
   state.smoothX += (x - state.smoothX) * alpha;
   state.smoothY += (y - state.smoothY) * alpha;
   return { x: state.smoothX, y: state.smoothY };

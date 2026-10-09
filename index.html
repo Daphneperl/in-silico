@@ -833,7 +833,7 @@
         function hitTestMicrobe(x, y) {
           // No new grabs while the hand is inside the bubble.
           if (isPointInCircle(x, y)) return null;
-          var HIT_RADIUS = 80;
+          var HIT_RADIUS = 140;
           var best = null;
           var bestDist = HIT_RADIUS;
           for (var i = 0; i < cornerMicrobes.length; i++) {
@@ -856,6 +856,7 @@
           moveGrab: moveGrab,
           endGrab: endGrab,
           hitTestMicrobe: hitTestMicrobe,
+          isInCircle: isPointInCircle,
           isGrabbing: function (id) {
             return grabs.has(id);
           },

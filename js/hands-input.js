@@ -9,16 +9,15 @@ const WASM_URL =
 const MODEL_URL =
   "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
 
-const PINCH_ON = 0.045;
-const PINCH_OFF = 0.07;
 /** Drop a second detection if it sits this close (px) to another hand. */
 const GHOST_PX = 72;
-/** Frames of open pinch required before dropping a held microbe. */
-const RELEASE_FRAMES = 10;
 /** Frames of lost tracking allowed before dropping a held microbe. */
 const MISS_FRAMES = 18;
+/** Frames over the ethanol bottle before it activates. */
+const ETHANOL_DWELL = 18;
 const THUMB_TIP = 4;
 const INDEX_TIP = 8;
+const PALM_IDS = [0, 5, 9, 13, 17];
 
 const HAND_LABELS = ["Left", "Right"];
 
@@ -62,9 +61,8 @@ let frameCount = 0;
 
 const handState = {
   Left: {
-    pinched: false,
-    releaseFrames: 0,
     missFrames: 0,
+    ethanolFrames: 0,
     lastX: 0,
     lastY: 0,
     hasSmooth: false,
@@ -72,9 +70,8 @@ const handState = {
     smoothY: 0,
   },
   Right: {
-    pinched: false,
-    releaseFrames: 0,
     missFrames: 0,
+    ethanolFrames: 0,
     lastX: 0,
     lastY: 0,
     hasSmooth: false,
@@ -128,17 +125,19 @@ function videoToScreen(lmX, lmY) {
   };
 }
 
-function pinchDistance(landmarks) {
-  const a = landmarks[THUMB_TIP];
-  const b = landmarks[INDEX_TIP];
-  if (!a || !b) return 1;
-  return Math.hypot(a.x - b.x, a.y - b.y);
-}
-
-function pinchMidpoint(landmarks) {
-  const a = landmarks[THUMB_TIP];
-  const b = landmarks[INDEX_TIP];
-  return videoToScreen((a.x + b.x) / 2, (a.y + b.y) / 2);
+function palmPoint(landmarks) {
+  let x = 0;
+  let y = 0;
+  let n = 0;
+  for (let i = 0; i < PALM_IDS.length; i++) {
+    const lm = landmarks[PALM_IDS[i]];
+    if (!lm) continue;
+    x += lm.x;
+    y += lm.y;
+    n += 1;
+  }
+  if (!n) return videoToScreen(0.5, 0.5);
+  return videoToScreen(x / n, y / n);
 }
 
 function handScore(handednesses, index) {
@@ -146,13 +145,6 @@ function handScore(handednesses, index) {
   const cat = group && (group[0] || (group.categories && group.categories[0]));
   const score = cat && (cat.score != null ? cat.score : cat.categoryScore);
   return typeof score === "number" ? score : 0;
-}
-
-function pinchBlend(dist, holding) {
-  if (holding) return 1;
-  if (dist <= PINCH_ON) return 1;
-  if (dist >= PINCH_OFF) return 0;
-  return 1 - (dist - PINCH_ON) / (PINCH_OFF - PINCH_ON);
 }
 
 function smoothCursor(state, x, y) {
@@ -257,7 +249,7 @@ function processHands(result) {
       landmarks: landmarks,
       label: handLabel(handednesses, i),
       score: handScore(handednesses, i),
-      tip: videoToScreen(landmarks[INDEX_TIP].x, landmarks[INDEX_TIP].y),
+      palm: palmPoint(landmarks),
     });
   }
   candidates.sort(function (a, b) {
@@ -268,7 +260,7 @@ function processHands(result) {
     const c = candidates[i];
     let ghost = false;
     for (let k = 0; k < kept.length; k++) {
-      if (Math.hypot(c.tip.x - kept[k].tip.x, c.tip.y - kept[k].tip.y) < GHOST_PX) {
+      if (Math.hypot(c.palm.x - kept[k].palm.x, c.palm.y - kept[k].palm.y) < GHOST_PX) {
         ghost = true;
         break;
       }
@@ -277,7 +269,6 @@ function processHands(result) {
   }
 
   for (let i = 0; i < kept.length; i++) {
-    const landmarks = kept[i].landmarks;
     const label = kept[i].label;
     if (seen[label]) continue;
     seen[label] = true;
@@ -285,62 +276,36 @@ function processHands(result) {
     const state = handState[label];
     const slot = "hand-" + label;
     const holding = api && api.isGrabbing(slot);
-    const dist = pinchDistance(landmarks);
-
-    let justPinched = false;
-    if (!state.pinched && dist < PINCH_ON) {
-      state.pinched = true;
-      state.releaseFrames = 0;
-      justPinched = true;
-    }
-    if (state.pinched && dist > PINCH_OFF) {
-      // While holding a microbe, require sustained open-pinch before release.
-      if (holding) {
-        state.releaseFrames += 1;
-        if (state.releaseFrames >= RELEASE_FRAMES) {
-          state.pinched = false;
-          state.releaseFrames = 0;
-        }
-      } else {
-        state.pinched = false;
-        state.releaseFrames = 0;
-      }
-    } else {
-      state.releaseFrames = 0;
-    }
-
+    const cursor = smoothCursor(state, kept[i].palm.x, kept[i].palm.y);
     state.missFrames = 0;
-    const tip = kept[i].tip;
-    const mid = pinchMidpoint(landmarks);
-    const t = pinchBlend(dist, holding);
-    const mixed = {
-      x: tip.x + (mid.x - tip.x) * t,
-      y: tip.y + (mid.y - tip.y) * t,
-    };
-    const cursor = smoothCursor(state, mixed.x, mixed.y);
     state.lastX = cursor.x;
     state.lastY = cursor.y;
-    setCursor(label, cursor.x, cursor.y, true, state.pinched || holding);
-
-    const ethanol = hitTestEthanol(mid.x, mid.y);
-    if (justPinched && ethanol) ethanol.click();
+    setCursor(label, cursor.x, cursor.y, true, holding);
 
     if (!api) continue;
 
-    if (state.pinched || holding) {
-      if (holding) {
-        api.moveGrab(slot, cursor.x, cursor.y);
-      }
-      if (state.pinched && !api.isGrabbing(slot) && !ethanol) {
-        const el = api.hitTestMicrobe(mid.x, mid.y);
-        if (el) api.startGrab(slot, el, mid.x, mid.y);
-      }
-      if (!state.pinched && holding) {
+    if (holding) {
+      state.ethanolFrames = 0;
+      api.moveGrab(slot, cursor.x, cursor.y);
+      if (api.isInCircle && api.isInCircle(cursor.x, cursor.y)) {
         api.endGrab(slot);
       }
-    } else {
-      api.endGrab(slot);
+      continue;
     }
+
+    const ethanol = hitTestEthanol(cursor.x, cursor.y);
+    if (ethanol) {
+      state.ethanolFrames += 1;
+      if (state.ethanolFrames >= ETHANOL_DWELL) {
+        ethanol.click();
+        state.ethanolFrames = 0;
+      }
+      continue;
+    }
+
+    state.ethanolFrames = 0;
+    const el = api.hitTestMicrobe(cursor.x, cursor.y);
+    if (el) api.startGrab(slot, el, cursor.x, cursor.y);
   }
 
   HAND_LABELS.forEach(function (label) {
@@ -353,9 +318,8 @@ function processHands(result) {
       state.missFrames += 1;
       setCursor(label, state.lastX, state.lastY, true, true);
       if (state.missFrames >= MISS_FRAMES) {
-        state.pinched = false;
-        state.releaseFrames = 0;
         state.missFrames = 0;
+        state.ethanolFrames = 0;
         state.hasSmooth = false;
         api.endGrab(slot);
         setCursor(label, 0, 0, false, false);
@@ -363,9 +327,8 @@ function processHands(result) {
       return;
     }
 
-    state.pinched = false;
-    state.releaseFrames = 0;
     state.missFrames = 0;
+    state.ethanolFrames = 0;
     state.hasSmooth = false;
     setCursor(label, 0, 0, false, false);
     if (api) api.endGrab(slot);

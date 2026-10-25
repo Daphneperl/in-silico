@@ -1,0 +1,1066 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>In-silico Audio Control</title>
+    <link rel="icon" href="assets/microbe_gifs/bac1_1.gif" type="image/gif" />
+    <style>
+      :root {
+        --bg: #0b0d0f;
+        --panel: #14171b;
+        --panel-2: #1b1f24;
+        --line: rgba(255, 255, 255, 0.08);
+        --text: #e9ecef;
+        --muted: #949ba3;
+        --accent: #5fd4c4;
+        --accent-dim: rgba(95, 212, 196, 0.18);
+        --warn: #f2b84b;
+        --bad: #f07167;
+        --radius: 10px;
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        background: var(--bg);
+        color: var(--text);
+        font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+        padding: 20px 24px 40px;
+      }
+
+      header {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        flex-wrap: wrap;
+        margin-bottom: 18px;
+      }
+
+      h1 {
+        font-size: 17px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        margin-right: auto;
+      }
+
+      h1 span {
+        color: var(--muted);
+        font-weight: 400;
+      }
+
+      .status {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        padding: 5px 11px;
+        border-radius: 999px;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 12.5px;
+        white-space: nowrap;
+      }
+
+      .pill::before {
+        content: "";
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--muted);
+      }
+
+      .pill.ok {
+        color: var(--text);
+      }
+      .pill.ok::before {
+        background: var(--accent);
+        box-shadow: 0 0 8px var(--accent);
+      }
+      .pill.warn::before {
+        background: var(--warn);
+      }
+      .pill.bad::before {
+        background: var(--bad);
+      }
+
+      button {
+        font: inherit;
+        color: var(--text);
+        background: var(--panel-2);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 6px 12px;
+        cursor: pointer;
+      }
+
+      button:hover:not(:disabled) {
+        border-color: rgba(255, 255, 255, 0.22);
+      }
+
+      button:disabled {
+        opacity: 0.35;
+        cursor: default;
+      }
+
+      button:focus-visible,
+      input:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+
+      .notice {
+        display: none;
+        margin-bottom: 16px;
+        padding: 10px 14px;
+        border-radius: var(--radius);
+        border: 1px solid rgba(242, 184, 75, 0.35);
+        background: rgba(242, 184, 75, 0.08);
+        color: #f6d697;
+      }
+
+      .notice.show {
+        display: block;
+      }
+
+      .notice code {
+        color: var(--text);
+      }
+
+      section {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: 16px 18px 6px;
+        margin-bottom: 16px;
+      }
+
+      section h2 {
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+        margin-bottom: 6px;
+      }
+
+      .intro {
+        max-width: 78ch;
+        margin-bottom: 14px;
+        color: #c3c8ce;
+        font-size: 13.5px;
+      }
+
+      .intro strong {
+        color: var(--text);
+        font-weight: 600;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 4px 28px;
+      }
+
+      .columns {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+        gap: 0 16px;
+      }
+
+      .control {
+        padding: 6px 0 12px;
+      }
+
+      .control-head {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+        margin-bottom: 6px;
+      }
+
+      .control-head label {
+        margin-right: auto;
+      }
+
+      .value {
+        font-variant-numeric: tabular-nums;
+        color: var(--muted);
+        min-width: 4.5em;
+        text-align: right;
+      }
+
+      .changed .value {
+        color: var(--accent);
+      }
+
+      .hint {
+        color: var(--muted);
+        font-size: 12px;
+        margin-top: 4px;
+      }
+
+      .reset {
+        visibility: hidden;
+        padding: 0 6px;
+        border: none;
+        background: none;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .changed .reset {
+        visibility: visible;
+      }
+
+      .reset:hover {
+        color: var(--text);
+      }
+
+      input[type="range"] {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 100%;
+        height: 22px;
+        background: transparent;
+        cursor: pointer;
+        --fill: 50%;
+      }
+
+      input[type="range"]::-webkit-slider-runnable-track {
+        height: 4px;
+        border-radius: 2px;
+        background: linear-gradient(
+          to right,
+          var(--accent) var(--fill),
+          rgba(255, 255, 255, 0.12) var(--fill)
+        );
+      }
+
+      input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        width: 16px;
+        height: 16px;
+        margin-top: -6px;
+        border-radius: 50%;
+        background: var(--text);
+        border: 3px solid var(--panel);
+        box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.25);
+      }
+
+      input[type="range"]::-moz-range-track {
+        height: 4px;
+        border-radius: 2px;
+        background: rgba(255, 255, 255, 0.12);
+      }
+
+      input[type="range"]::-moz-range-progress {
+        height: 4px;
+        border-radius: 2px;
+        background: var(--accent);
+      }
+
+      input[type="range"]::-moz-range-thumb {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: var(--text);
+        border: none;
+      }
+
+      .switch {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 0;
+        border: none;
+        background: none;
+        text-align: left;
+      }
+
+      .switch .knob {
+        position: relative;
+        width: 34px;
+        height: 20px;
+        flex-shrink: 0;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.14);
+        transition: background 0.15s;
+      }
+
+      .switch .knob::after {
+        content: "";
+        position: absolute;
+        top: 3px;
+        left: 3px;
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: var(--text);
+        transition: transform 0.15s;
+      }
+
+      .switch[aria-checked="true"] .knob {
+        background: var(--accent);
+      }
+
+      .switch[aria-checked="true"] .knob::after {
+        transform: translateX(14px);
+        background: var(--bg);
+      }
+
+      .segmented {
+        display: inline-flex;
+        margin-top: 12px;
+        padding: 3px;
+        gap: 3px;
+        border-radius: 9px;
+        background: var(--panel-2);
+        border: 1px solid var(--line);
+      }
+
+      .segmented button {
+        border: none;
+        border-radius: 6px;
+        background: none;
+        color: var(--muted);
+        padding: 5px 12px;
+        font-size: 13px;
+      }
+
+      .segmented button[aria-checked="true"] {
+        background: var(--accent);
+        color: var(--bg);
+        font-weight: 600;
+      }
+
+      /* ---- mixer ---- */
+      .mixer {
+        display: grid;
+        gap: 2px;
+        margin-bottom: 10px;
+      }
+
+      .track {
+        display: grid;
+        grid-template-columns: 40px minmax(140px, 210px) minmax(80px, 1fr) auto auto;
+        align-items: center;
+        gap: 4px 14px;
+        padding: 10px 12px 2px;
+        border-radius: 8px;
+      }
+
+      .track-controls {
+        grid-column: 2 / -1;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0 24px;
+      }
+
+      .track-controls .control {
+        padding: 2px 0 8px;
+      }
+
+      .track-controls .control-head {
+        margin-bottom: 0;
+        font-size: 12.5px;
+      }
+
+      .track-controls label {
+        color: var(--muted);
+      }
+
+      .track:nth-child(odd) {
+        background: rgba(255, 255, 255, 0.025);
+      }
+
+      .track.entering {
+        background: var(--accent-dim);
+      }
+
+      .thumb {
+        width: 40px;
+        height: 40px;
+        border-radius: 8px;
+        background: #000 center / cover no-repeat;
+        border: 1px solid var(--line);
+        display: grid;
+        place-items: center;
+        color: var(--muted);
+        font-size: 11px;
+      }
+
+      .track-name strong {
+        display: block;
+        font-weight: 600;
+      }
+
+      .track-name span {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .meter {
+        height: 8px;
+        border-radius: 4px;
+        background: rgba(255, 255, 255, 0.08);
+        overflow: hidden;
+      }
+
+      .meter i {
+        display: block;
+        height: 100%;
+        width: 0;
+        background: var(--accent);
+        border-radius: 4px;
+        transition: width 0.18s linear;
+      }
+
+      .mute[aria-pressed="true"] {
+        background: rgba(240, 113, 103, 0.18);
+        border-color: rgba(240, 113, 103, 0.5);
+        color: #ffb3ad;
+      }
+
+      .test-spacer {
+        width: 58px;
+      }
+
+      footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+        color: var(--muted);
+        font-size: 12.5px;
+      }
+
+      @media (max-width: 760px) {
+        body {
+          padding: 16px;
+        }
+        .track {
+          grid-template-columns: 40px 1fr auto auto;
+        }
+        .track .meter {
+          grid-column: 2 / -1;
+        }
+        .track-controls {
+          grid-column: 1 / -1;
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>In-silico <span>· Audio control</span></h1>
+      <div class="status">
+        <span class="pill" id="link-status">Looking for the installation…</span>
+        <span class="pill" id="music-status">Music: unknown</span>
+        <span class="pill" id="pitch-status">Pitch: untouched</span>
+      </div>
+      <button id="reset-all" type="button">Reset all to defaults</button>
+    </header>
+
+    <div class="notice" id="link-notice">
+      The installation page isn't answering. Open it in this same browser at
+      <code id="link-origin"></code> (then press <strong>M</strong> on it to
+      open this panel), so both pages share settings. Changes made here are
+      saved and will apply as soon as it opens.
+    </div>
+
+    <section>
+      <h2>Overall sound</h2>
+      <p class="intro">
+        Changes all the music at once: how loud it is, how fast it plays, and
+        how high or low it sounds.
+      </p>
+      <div class="grid" id="output-controls"></div>
+    </section>
+
+    <section>
+      <h2>The 7 music tracks</h2>
+      <p class="intro">
+        The music is made of 7 tracks playing together. Track 1 is the
+        background and is always on. Each of the others belongs to one group
+        of microbes at the edge of the screen, and you only hear it while those
+        microbes are inside the bubble.<br />
+        In each row: the <strong>bar</strong> shows how loud the track is right
+        now, <strong>Mute</strong> switches it off, and <strong>Test</strong>
+        plays it as if someone had just dropped that microbe in. Underneath,
+        <strong>Volume</strong>, <strong>Speed</strong> and
+        <strong>Pitch</strong> change that track alone, on top of the overall
+        sound above. Speed 1.00× keeps the track in time with the others.
+      </p>
+      <div class="mixer" id="mixer"></div>
+    </section>
+
+    <div class="columns">
+      <section>
+        <h2>How the music follows the microbes</h2>
+        <p class="intro">
+          Dropping a microbe into the bubble brings in its track. The more
+          microbes of that kind are in the bubble, the louder its track gets.
+        </p>
+        <div id="response-controls"></div>
+      </section>
+      <section>
+        <h2>When someone drops a microbe in</h2>
+        <p class="intro">
+          Each new microbe gets a short highlight: its track jumps to full
+          volume for a moment while the rest of the music gets quieter, so you
+          can hear what just arrived. Then everything goes back to normal.
+        </p>
+        <div id="entrance-controls"></div>
+      </section>
+    </div>
+
+    <footer>
+      <span>Changes apply instantly and are remembered in this browser.</span>
+      <span id="last-update"></span>
+    </footer>
+
+    <script src="js/audio-settings.js"></script>
+    <script>
+      (function () {
+        var settings = InSilicoAudio.load();
+        var defaults = InSilicoAudio.defaults();
+        var channel = InSilicoAudio.openChannel();
+        var refreshers = [];
+
+        function percent(v) {
+          return Math.round(v * 100) + "%";
+        }
+        function seconds(v) {
+          return (Math.round(v * 100) / 100).toFixed(v < 1 ? 2 : 1) + " s";
+        }
+        function times(v) {
+          return v.toFixed(2) + "×";
+        }
+        function semitones(v) {
+          if (!v) return "0 st";
+          return (v > 0 ? "+" : "−") + Math.abs(v) + " st";
+        }
+        function count(v) {
+          return String(v);
+        }
+
+        var OUTPUT = [
+          {
+            key: "masterVolume",
+            label: "Volume",
+            min: 0,
+            max: 1,
+            step: 0.01,
+            format: percent,
+            hint: "How loud all the music is",
+          },
+          {
+            key: "speed",
+            label: "Speed",
+            min: 0.25,
+            max: 5,
+            step: 0.01,
+            format: times,
+            hint: "How fast the music plays, up to 5×. 1.00× is the original speed; the installation starts at 0.75×",
+            pitchChoice: true,
+          },
+          {
+            key: "pitchSemitones",
+            label: "Pitch",
+            min: -12,
+            max: 12,
+            step: 1,
+            format: semitones,
+            hint: "Higher or lower notes, same speed. Each step is one note (a semitone)",
+          },
+        ];
+
+        var RESPONSE = [
+          {
+            key: "stemFirstVolume",
+            label: "Volume with one microbe",
+            min: 0,
+            max: 1,
+            step: 0.01,
+            format: percent,
+            hint: "How loud a track is when just one of its microbes is in the bubble",
+          },
+          {
+            key: "stemFullCount",
+            label: "Microbes for full volume",
+            min: 1,
+            max: 30,
+            step: 1,
+            format: count,
+            hint: "How many of its microbes it takes to reach full volume. The bubble also copies microbes by itself, so tracks get louder over time",
+          },
+          {
+            key: "fadeInSeconds",
+            label: "Fade-in time",
+            min: 0.05,
+            max: 3,
+            step: 0.05,
+            format: seconds,
+            hint: "How quickly a track comes in when its microbe arrives (and how quickly the others get quieter during a highlight)",
+          },
+          {
+            key: "fadeOutSeconds",
+            label: "Fade-out time",
+            min: 0.2,
+            max: 10,
+            step: 0.1,
+            format: seconds,
+            hint: "How slowly the music goes quiet after the ethanol bottle clears the bubble",
+          },
+        ];
+
+        var ENTRANCE = [
+          {
+            key: "entranceEnabled",
+            type: "toggle",
+            label: "Highlight each new microbe",
+            hint: "Off: a new microbe's track just fades in, with no highlight",
+          },
+          {
+            key: "entranceHoldSeconds",
+            label: "Highlight length",
+            min: 0,
+            max: 5,
+            step: 0.1,
+            format: seconds,
+            hint: "How long the new microbe's track stays at full volume",
+          },
+          {
+            key: "entranceReleaseSeconds",
+            label: "Back to normal over",
+            min: 0.2,
+            max: 10,
+            step: 0.1,
+            format: seconds,
+            hint: "How long it then takes for everything to go back to normal",
+          },
+          {
+            key: "entranceDuck",
+            label: "Rest of the music gets quieter by",
+            min: 0,
+            max: 0.9,
+            step: 0.01,
+            format: percent,
+            hint: "How much quieter the other tracks get during the highlight",
+          },
+        ];
+
+        // ---- sending ----
+        function commit() {
+          InSilicoAudio.save(settings);
+          if (channel) channel.postMessage({ type: "settings", settings: settings });
+          refreshAll();
+        }
+
+        // ---- building controls ----
+        var uid = 0;
+
+        function setFill(input) {
+          var min = parseFloat(input.min);
+          var max = parseFloat(input.max);
+          var pct = ((parseFloat(input.value) - min) / (max - min)) * 100;
+          input.style.setProperty("--fill", pct + "%");
+        }
+
+        function makeSlider(def, get, set, getDefault) {
+          var id = "ctl-" + uid++;
+          var row = document.createElement("div");
+          row.className = "control";
+          row.innerHTML =
+            '<div class="control-head"><label></label>' +
+            '<button class="reset" type="button" title="Back to default">↺</button>' +
+            '<span class="value"></span></div><input type="range" />' +
+            (def.hint ? '<div class="hint"></div>' : "");
+          var label = row.querySelector("label");
+          var input = row.querySelector("input");
+          var value = row.querySelector(".value");
+          label.textContent = def.label;
+          label.htmlFor = id;
+          input.id = id;
+          input.min = def.min;
+          input.max = def.max;
+          input.step = def.step;
+          if (def.hint) row.querySelector(".hint").textContent = def.hint;
+
+          input.addEventListener("input", function () {
+            set(parseFloat(input.value));
+            commit();
+          });
+          row.querySelector(".reset").addEventListener("click", function () {
+            set(getDefault());
+            commit();
+          });
+
+          refreshers.push(function () {
+            var v = get();
+            if (document.activeElement !== input || input.value != v) {
+              input.value = v;
+            }
+            setFill(input);
+            value.textContent = def.format(v);
+            row.classList.toggle("changed", Math.abs(v - getDefault()) > 1e-9);
+          });
+          return row;
+        }
+
+        function makeToggle(def, get, set, getDefault) {
+          var row = document.createElement("div");
+          row.className = "control";
+          row.innerHTML =
+            '<div class="control-head"><button class="switch" type="button" role="switch">' +
+            '<span class="knob"></span><span class="switch-label"></span></button>' +
+            '<button class="reset" type="button" title="Back to default">↺</button></div>' +
+            (def.hint ? '<div class="hint"></div>' : "");
+          var sw = row.querySelector(".switch");
+          row.querySelector(".switch-label").textContent = def.label;
+          sw.style.marginRight = "auto";
+          if (def.hint) row.querySelector(".hint").textContent = def.hint;
+          sw.addEventListener("click", function () {
+            set(!get());
+            commit();
+          });
+          row.querySelector(".reset").addEventListener("click", function () {
+            set(getDefault());
+            commit();
+          });
+          refreshers.push(function () {
+            sw.setAttribute("aria-checked", String(get()));
+            row.classList.toggle("changed", get() !== getDefault());
+          });
+          return row;
+        }
+
+        // Two-way choice shown under Speed: whether changing speed also
+        // changes pitch.
+        function makePitchChoice() {
+          var group = document.createElement("div");
+          group.className = "segmented";
+          group.setAttribute("role", "radiogroup");
+          group.setAttribute("aria-label", "Pitch when speed changes");
+          var options = [
+            { value: true, text: "Keep pitch" },
+            { value: false, text: "Pitch follows speed" },
+          ];
+          var buttons = options.map(function (option) {
+            var b = document.createElement("button");
+            b.type = "button";
+            b.setAttribute("role", "radio");
+            b.textContent = option.text;
+            b.addEventListener("click", function () {
+              settings.keepPitch = option.value;
+              commit();
+            });
+            group.appendChild(b);
+            return b;
+          });
+          var hint = document.createElement("div");
+          hint.className = "hint";
+          refreshers.push(function () {
+            buttons.forEach(function (b, i) {
+              b.setAttribute(
+                "aria-checked",
+                String(options[i].value === settings.keepPitch)
+              );
+            });
+            hint.textContent = settings.keepPitch
+              ? "The speed changes, the notes stay the same"
+              : "Like a tape: faster sounds higher, slower sounds lower";
+          });
+          var wrap = document.createElement("div");
+          wrap.appendChild(group);
+          wrap.appendChild(hint);
+          return wrap;
+        }
+
+        function buildSettingControls(defs, containerId) {
+          var container = document.getElementById(containerId);
+          defs.forEach(function (def) {
+            var get = function () {
+              return settings[def.key];
+            };
+            var set = function (v) {
+              settings[def.key] = v;
+            };
+            var getDefault = function () {
+              return defaults[def.key];
+            };
+            var row =
+              def.type === "toggle"
+                ? makeToggle(def, get, set, getDefault)
+                : makeSlider(def, get, set, getDefault);
+            if (def.pitchChoice) row.appendChild(makePitchChoice());
+            container.appendChild(row);
+          });
+        }
+
+        // ---- mixer ----
+        var trackRows = [];
+
+        function buildMixer() {
+          var mixer = document.getElementById("mixer");
+          InSilicoAudio.TRACKS.forEach(function (info, i) {
+            var row = document.createElement("div");
+            row.className = "track";
+            var thumb = document.createElement("div");
+            thumb.className = "thumb";
+            if (info.gif) {
+              thumb.style.backgroundImage =
+                "url(assets/microbe_gifs/" + info.gif + ".gif)";
+            } else {
+              thumb.textContent = "base";
+            }
+
+            var name = document.createElement("div");
+            name.className = "track-name";
+            name.innerHTML = "<strong></strong><span></span>";
+            name.querySelector("strong").textContent = i + 1 + " · " + info.name;
+            var detail = name.querySelector("span");
+
+            var meter = document.createElement("div");
+            meter.className = "meter";
+            meter.title = "What this track is playing at right now";
+            meter.innerHTML = "<i></i>";
+
+            // Volume, speed and pitch for this track alone.
+            function trackSlider(key, def) {
+              var slider = makeSlider(
+                def,
+                function () {
+                  return settings.tracks[i][key];
+                },
+                function (v) {
+                  settings.tracks[i][key] = v;
+                },
+                function () {
+                  return defaults.tracks[i][key];
+                }
+              );
+              slider
+                .querySelector("input")
+                .setAttribute("aria-label", "Track " + (i + 1) + " " + def.label);
+              return slider;
+            }
+
+            var controls = document.createElement("div");
+            controls.className = "track-controls";
+            controls.appendChild(
+              trackSlider("level", {
+                label: "Volume",
+                min: 0,
+                max: 1,
+                step: 0.01,
+                format: percent,
+              })
+            );
+            var speed = trackSlider("speed", {
+              label: "Speed",
+              min: 0.25,
+              max: 5,
+              step: 0.01,
+              format: times,
+            });
+            var speedNote = document.createElement("div");
+            speedNote.className = "hint";
+            speed.appendChild(speedNote);
+            controls.appendChild(speed);
+            controls.appendChild(
+              trackSlider("pitch", {
+                label: "Pitch",
+                min: -12,
+                max: 12,
+                step: 1,
+                format: semitones,
+              })
+            );
+
+            var mute = document.createElement("button");
+            mute.type = "button";
+            mute.className = "mute";
+            mute.textContent = "Mute";
+            mute.addEventListener("click", function () {
+              settings.tracks[i].mute = !settings.tracks[i].mute;
+              commit();
+            });
+
+            var test;
+            if (i === 0) {
+              test = document.createElement("span");
+              test.className = "test-spacer";
+            } else {
+              test = document.createElement("button");
+              test.type = "button";
+              test.textContent = "Test";
+              test.title = "Play this track's entrance swell, as if a microbe was dropped in";
+              test.addEventListener("click", function () {
+                if (channel) channel.postMessage({ type: "test", track: i });
+              });
+            }
+
+            [thumb, name, meter, mute, test, controls].forEach(function (el) {
+              row.appendChild(el);
+            });
+            mixer.appendChild(row);
+
+            refreshers.push(function () {
+              mute.setAttribute("aria-pressed", String(settings.tracks[i].mute));
+              if (i > 0) test.disabled = !settings.entranceEnabled || !linked;
+              var own = settings.tracks[i].speed !== 1;
+              var notes = [];
+              if (own) {
+                notes.push(
+                  i === 0
+                    ? "The other tracks no longer keep time with this one"
+                    : "Plays on its own, out of time with the other tracks"
+                );
+              }
+              // Must match MAX_RATE in index.html.
+              if (settings.speed * settings.tracks[i].speed > 8) {
+                notes.push("Overall × this track is over 8×, so it plays at 8×");
+              }
+              speedNote.textContent = notes.join(". ");
+            });
+
+            trackRows.push({
+              row: row,
+              bar: meter.querySelector("i"),
+              detail: detail,
+            });
+          });
+        }
+
+        function refreshAll() {
+          refreshers.forEach(function (fn) {
+            fn();
+          });
+        }
+
+        // ---- status from the installation ----
+        var linked = false;
+        var lastStatusAt = 0;
+        var lastStatus = null;
+
+        function setPill(id, text, tone) {
+          var el = document.getElementById(id);
+          el.textContent = text;
+          el.className = "pill" + (tone ? " " + tone : "");
+        }
+
+        function showStatus() {
+          var fresh = performance.now() - lastStatusAt < 2500;
+          if (fresh !== linked) {
+            linked = fresh;
+            refreshAll();
+          }
+          document.getElementById("link-notice").classList.toggle("show", !fresh);
+          setPill(
+            "link-status",
+            fresh ? "Installation connected" : "Installation not found",
+            fresh ? "ok" : "bad"
+          );
+          var s = fresh ? lastStatus : null;
+          if (!s) {
+            setPill("music-status", "Music: unknown", "");
+            setPill("pitch-status", "Pitch: unknown", "");
+          } else {
+            setPill(
+              "music-status",
+              s.state === "playing"
+                ? "Music playing"
+                : s.state === "blocked"
+                  ? "Music waiting for a click on the installation"
+                  : "Music loading…",
+              s.state === "playing" ? "ok" : "warn"
+            );
+            var pitchText = {
+              off: ["Pitch: untouched", ""],
+              starting: ["Pitch: starting…", "warn"],
+              on: ["Pitch shifter on", "ok"],
+              "needs-click": ["Pitch: click once on the installation", "warn"],
+              unavailable: ["Pitch unavailable (open the installation via the launcher)", "bad"],
+            }[s.pitch] || ["Pitch: " + s.pitch, ""];
+            setPill("pitch-status", pitchText[0], pitchText[1]);
+          }
+
+          trackRows.forEach(function (t, i) {
+            var volume = s && s.volumes[i] != null ? s.volumes[i] : 0;
+            t.bar.style.width = Math.round(volume * 100) + "%";
+            t.row.classList.toggle("entering", !!(s && s.entering[i]));
+            if (i === 0) {
+              t.detail.textContent = "always playing";
+            } else {
+              var n = s ? s.counts[i] : 0;
+              t.detail.textContent = s
+                ? n + (n === 1 ? " microbe" : " microbes") + " in the bubble"
+                : "—";
+            }
+          });
+        }
+
+        if (channel) {
+          channel.onmessage = function (e) {
+            var msg = e.data || {};
+            if (msg.type === "status") {
+              lastStatus = msg;
+              lastStatusAt = performance.now();
+              showStatus();
+            } else if (msg.type === "settings") {
+              // Another open copy of this panel changed something.
+              settings = InSilicoAudio.normalize(msg.settings);
+              refreshAll();
+            }
+          };
+          channel.postMessage({ type: "hello" });
+        }
+
+        document.getElementById("reset-all").addEventListener("click", function () {
+          settings = InSilicoAudio.defaults();
+          commit();
+        });
+
+        document.getElementById("link-origin").textContent = location.origin + "/";
+
+        // Inside the installation's overlay, keys typed here never reach
+        // the installation page, so ask it to close the overlay.
+        if (window.parent !== window) {
+          window.addEventListener("keydown", function (e) {
+            if (e.repeat) return;
+            if (e.key !== "m" && e.key !== "M" && e.key !== "Escape") return;
+            // A page opened as a file has origin "null", which postMessage rejects.
+            var target = location.origin === "null" ? "*" : location.origin;
+            window.parent.postMessage({ type: "close-audio-control" }, target);
+          });
+        }
+
+        buildSettingControls(OUTPUT, "output-controls");
+        buildMixer();
+        buildSettingControls(RESPONSE, "response-controls");
+        buildSettingControls(ENTRANCE, "entrance-controls");
+        refreshAll();
+        showStatus();
+        setInterval(showStatus, 500);
+
+        // Send the saved settings once, in case the installation was
+        // opened before they were last changed.
+        if (channel) channel.postMessage({ type: "settings", settings: settings });
+      })();
+    </script>
+  </body>
+</html>

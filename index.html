@@ -330,6 +330,42 @@
         padding: 4px 6px;
       }
 
+      #audio-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        z-index: 5000;
+        padding: 52px 24px 24px;
+        background: rgba(0, 0, 0, 0.6);
+        pointer-events: auto;
+      }
+
+      #audio-overlay.open {
+        display: block;
+      }
+
+      #audio-overlay iframe {
+        width: 100%;
+        height: 100%;
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        border-radius: 10px;
+        background: #0b0d0f;
+      }
+
+      #audio-overlay-close {
+        position: absolute;
+        top: 14px;
+        right: 24px;
+        width: 30px;
+        height: 30px;
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        border-radius: 8px;
+        background: #1b1f24;
+        color: #e9ecef;
+        font: 16px/1 sans-serif;
+        cursor: pointer;
+      }
+
       #loader {
         position: fixed;
         inset: 0;
@@ -475,6 +511,12 @@
       </label>
     </div>
 
+    <div id="audio-overlay">
+      <iframe title="Audio control"></iframe>
+      <button id="audio-overlay-close" type="button" aria-label="Close audio control">×</button>
+    </div>
+
+    <script src="js/audio-settings.js"></script>
     <script>
       (function () {
         const circle = document.querySelector(".pixelated-circle");
@@ -801,6 +843,9 @@
           microbeMovement.delete(microbe);
           var ref = innerDotsContainer.firstChild;
           createInnerMicrobe(src, relX, relY, trackIndex, ref);
+          // A dropped microbe's track swells so its entrance is heard; the
+          // bubble's own copies arrive quietly.
+          if (trackIndex != null) accentTrack(trackIndex);
         }
 
         function getVariantNameFromSrc(src) {
@@ -1045,51 +1090,343 @@
           for (var j = 0; j < innerMicrobes.length; j++) {
             updateInnerMicrobePosition(innerMicrobes[j], dt);
           }
-          updateTrackVolumes();
+          updateTrackVolumes(dt);
           requestAnimationFrame(animate);
         }
 
-        // ================== audio player (same logic as index.html) ==================
+        // ================== audio player ==================
+        // Track 1 is the base layer and always plays. Tracks 2-7 are stems,
+        // one per corner: a microbe from that corner in the bubble brings its
+        // stem in, and the more of them there are, the louder it gets.
+        // Each dropped microbe also swells its stem to full and holds it,
+        // while the other tracks dip, then everything settles back.
+        // All volumes, fades, speed and pitch come from audioSettings and can
+        // be changed live from audio-control.html (press M to open it).
         const audioPlayers = [];
         const trackCount = 7;
-        var audioReady = false;
+        var SYNC_TOLERANCE_SILENT = 0.03;
+        var SYNC_TOLERANCE_AUDIBLE = 0.15;
+        var audioSettings = InSilicoAudio.load();
         var isPlaying = false;
-        var endedCount = 0;
+        var audioBlocked = false;
+        // Level from microbe counts, seconds of entrance swell left, and
+        // the volume before each track's level and the master are applied.
+        var stemLevels = [1, 0, 0, 0, 0, 0, 0];
+        var stemAccents = [0, 0, 0, 0, 0, 0, 0];
+        var stemVolumes = [1, 0, 0, 0, 0, 0, 0];
+        var trackCounts = [0, 0, 0, 0, 0, 0, 0];
+
+        function outputVolume(trackIndex) {
+          var track = audioSettings.tracks[trackIndex];
+          if (track.mute) return 0;
+          var volume =
+            stemVolumes[trackIndex] * track.level * audioSettings.masterVolume;
+          return Math.max(0, Math.min(1, volume));
+        }
+
+        // Chrome keeps the sound clean up to about 8x; past that the
+        // time-stretching breaks down, so the combined speed stops there.
+        var MAX_RATE = 8;
+
+        function trackRate(trackIndex) {
+          var rate =
+            audioSettings.speed * audioSettings.tracks[trackIndex].speed;
+          return Math.max(0.25, Math.min(MAX_RATE, rate));
+        }
+
+        // A track set to a different speed from track 1 can't stay in time
+        // with it, so it is left to loop on its own instead of being synced.
+        function runsFree(trackIndex) {
+          return (
+            trackIndex > 0 &&
+            Math.abs(trackRate(trackIndex) - trackRate(0)) > 1e-6
+          );
+        }
+
+        function trackSemitones(trackIndex) {
+          return (
+            audioSettings.pitchSemitones +
+            audioSettings.tracks[trackIndex].pitch
+          );
+        }
+
+        // Each track is downloaded whole and played from memory. Streamed,
+        // Chrome keeps a connection open per track, and seven of them use
+        // up its limit for this server, so later images (the ethanol
+        // bottle) never load. Opened as a file, fetch fails and the track
+        // streams as before.
+        function loadTrackSrc(t) {
+          var url = "assets/music/" + t + "track.mp3";
+          return fetch(url)
+            .then(function (res) {
+              if (!res.ok) throw new Error("HTTP " + res.status);
+              return res.blob();
+            })
+            .then(function (blob) {
+              return URL.createObjectURL(blob);
+            })
+            .catch(function () {
+              return url;
+            });
+        }
+
+        // Only track 1 loops; the stem files differ in length by a few
+        // seconds, so syncStems restarts them whenever track 1 loops.
+        // A track running at its own speed loops by itself instead.
+        var audioLoading = null;
 
         function ensureAudio() {
-          if (audioReady) return;
-          audioReady = true;
-          for (var i = 1; i <= trackCount; i++) {
-            var audio = new Audio("assets/music/" + i + "track.mp3");
-            audio.playbackRate = 0.75;
-            audioPlayers.push(audio);
-          }
-          audioPlayers[0].loop = true;
-          audioPlayers.forEach(function (audio, idx) {
-            if (idx === 0) return;
-            audio.addEventListener("ended", function () {
-              endedCount++;
-              if (endedCount === 6) {
-                isPlaying = false;
-                endedCount = 0;
-              }
+          if (audioLoading) return audioLoading;
+          var loads = [];
+          for (var t = 1; t <= trackCount; t++) loads.push(loadTrackSrc(t));
+          audioLoading = Promise.all(loads).then(function (srcs) {
+            srcs.forEach(function (src, idx) {
+              var audio = new Audio(src);
+              audio.loop = idx === 0;
+              audioPlayers.push(audio);
             });
+            audioPlayers[0].addEventListener("timeupdate", syncStems);
+            applyAudioSettings(audioSettings);
+          });
+          return audioLoading;
+        }
+
+        function applyAudioSettings(next) {
+          audioSettings = InSilicoAudio.normalize(next);
+          if (!audioSettings.entranceEnabled) {
+            for (var k = 0; k < stemAccents.length; k++) stemAccents[k] = 0;
+          }
+          audioPlayers.forEach(function (audio, i) {
+            var rate = trackRate(i);
+            audio.defaultPlaybackRate = rate;
+            if (audio.playbackRate !== rate) audio.playbackRate = rate;
+            if (audio.preservesPitch !== audioSettings.keepPitch) {
+              audio.preservesPitch = audioSettings.keepPitch;
+            }
+            audio.loop = i === 0 || runsFree(i);
+            // A stem waiting for track 1 to loop starts again once it is free.
+            if (audio.loop && audio.paused && isPlaying) {
+              audio.play().catch(function (err) {
+                console.error("Error playing audio:", err);
+              });
+            }
+            // Applied right away, so it works even while the page is hidden.
+            audio.volume = outputVolume(i);
+          });
+          updatePitch();
+        }
+
+        // ---- link to the control panel ----
+        var audioChannel = InSilicoAudio.openChannel();
+
+        function sendAudioStatus() {
+          audioChannel.postMessage({
+            type: "status",
+            state: isPlaying ? "playing" : audioBlocked ? "blocked" : "loading",
+            pitch: pitchState,
+            counts: trackCounts.slice(),
+            volumes: audioPlayers.map(function (audio) {
+              return audio.volume;
+            }),
+            entering: stemAccents.map(function (left) {
+              return left > 0;
+            }),
           });
         }
 
-        function playAllTracks() {
-          ensureAudio();
-          audioPlayers[0].volume = 0.5;
-          for (var i = 1; i < audioPlayers.length; i++) {
-            audioPlayers[i].volume = 0.0;
-          }
-          endedCount = 0;
-          audioPlayers.forEach(function (audio) {
-            audio.play().catch(function (err) {
-              console.error("Error playing audio:", err);
-            });
+        if (audioChannel) {
+          audioChannel.onmessage = function (e) {
+            var msg = e.data || {};
+            if (msg.type === "settings") applyAudioSettings(msg.settings);
+            else if (msg.type === "test") accentTrack(msg.track);
+            else if (msg.type === "hello") sendAudioStatus();
+          };
+          setInterval(sendAudioStatus, 200);
+        }
+
+        // ---- pitch ----
+        // Shifting pitch without changing speed needs Web Audio. The tracks
+        // are only routed through it once a pitch is first moved off 0, and
+        // only if the browser lets this page's audio run there, so a blocked
+        // audio context can never silence the installation. Each track has
+        // its own shifter, so each can be set to its own pitch.
+        var pitchState = "off";
+        var pitchGraph = null;
+        var pitchSetup = null;
+
+        function updatePitch() {
+          var shifted = audioPlayers.some(function (audio, i) {
+            return trackSemitones(i) !== 0;
           });
-          isPlaying = true;
+          if (pitchGraph) {
+            pitchGraph.ratios.forEach(function (ratio, i) {
+              ratio.setValueAtTime(
+                Math.pow(2, trackSemitones(i) / 12),
+                pitchGraph.context.currentTime
+              );
+            });
+            pitchState = shifted ? "on" : "off";
+            return;
+          }
+          if (!shifted || pitchSetup) return;
+          if (pitchState === "needs-click" || pitchState === "unavailable") {
+            return;
+          }
+          pitchState = "starting";
+          pitchSetup = routeThroughPitchShifter()
+            .then(function () {
+              pitchSetup = null;
+              updatePitch();
+            })
+            .catch(function (err) {
+              pitchSetup = null;
+              if (pitchState === "starting") pitchState = "unavailable";
+              console.error("Pitch shift unavailable:", err);
+            });
+        }
+
+        function waitForRunning(context, ms) {
+          if (context.state === "running") return Promise.resolve(true);
+          return new Promise(function (resolve) {
+            var timer = setTimeout(function () {
+              resolve(context.state === "running");
+            }, ms);
+            context.onstatechange = function () {
+              if (context.state !== "running") return;
+              clearTimeout(timer);
+              resolve(true);
+            };
+            context.resume();
+          });
+        }
+
+        function routeThroughPitchShifter() {
+          var inMemory = audioPlayers.every(function (audio) {
+            return audio.src.indexOf("blob:") === 0;
+          });
+          // Streamed from a file:// page, Web Audio would only hear silence.
+          if (!inMemory || typeof AudioWorkletNode !== "function") {
+            pitchState = "unavailable";
+            return Promise.reject(new Error("needs the page served over http"));
+          }
+          var context = new AudioContext();
+          return waitForRunning(context, 800).then(function (running) {
+            if (!running) {
+              context.close();
+              pitchState = "needs-click";
+              onFirstGesture(function () {
+                pitchState = "off";
+                updatePitch();
+              });
+              throw new Error("audio context needs a click on this page");
+            }
+            return context.audioWorklet
+              .addModule("js/pitch-shifter.js")
+              .then(function () {
+                var ratios = audioPlayers.map(function (audio) {
+                  var node = new AudioWorkletNode(context, "pitch-shifter", {
+                    outputChannelCount: [2],
+                    channelCount: 2,
+                    channelCountMode: "explicit",
+                  });
+                  node.connect(context.destination);
+                  context.createMediaElementSource(audio).connect(node);
+                  return node.parameters.get("ratio");
+                });
+                pitchGraph = { context: context, ratios: ratios };
+              });
+          });
+        }
+
+        // Start downloading as soon as the page's images are in.
+        window.addEventListener("load", ensureAudio);
+
+        function playAllTracks() {
+          ensureAudio()
+            .then(function () {
+              return Promise.all(
+                audioPlayers.map(function (audio) {
+                  return audio.play();
+                })
+              );
+            })
+            .then(function () {
+              isPlaying = true;
+              audioBlocked = false;
+            })
+            .catch(function (err) {
+              console.error("Error playing audio:", err);
+              audioPlayers.forEach(function (audio) {
+                audio.pause();
+              });
+              // Autoplay was blocked: start on the first click, touch or key.
+              audioBlocked = true;
+              onFirstGesture(playAllTracks);
+            });
+        }
+
+        function onFirstGesture(callback) {
+          var events = ["pointerdown", "touchstart", "keydown"];
+          function start() {
+            events.forEach(function (name) {
+              window.removeEventListener(name, start, true);
+            });
+            callback();
+          }
+          events.forEach(function (name) {
+            window.addEventListener(name, start, true);
+          });
+        }
+
+        // Keeps the stems on track 1's clock. Silent stems are lined up
+        // tightly; audible ones only when they are clearly off, since a
+        // seek is a small audible skip. Some stems resume a little late
+        // after a seek, so each one learns how far ahead to aim.
+        var lastMasterTime = 0;
+        var lastSyncCheck = 0;
+        var seekLeads = [0, 0, 0, 0, 0, 0, 0];
+        var seekPending = [false, false, false, false, false, false, false];
+
+        function syncStems() {
+          if (!isPlaying) return;
+          var master = audioPlayers[0];
+          var now = master.currentTime;
+          var looped = now < lastMasterTime - 1;
+          lastMasterTime = now;
+          if (!looped && performance.now() - lastSyncCheck < 2000) return;
+          lastSyncCheck = performance.now();
+          // Drift is in track time, which runs faster at higher speeds; the
+          // tolerances and leads are in real seconds, so they scale with it.
+          var rate = trackRate(0);
+          for (var i = 1; i < audioPlayers.length; i++) {
+            var stem = audioPlayers[i];
+            if (stem.seeking || runsFree(i)) continue;
+            if (!looped) {
+              // A stem shorter than track 1 waits here for the next loop.
+              if (stem.ended) continue;
+              var drift = stem.currentTime - now;
+              if (seekPending[i] && Math.abs(drift) < 0.3 * rate) {
+                seekLeads[i] = Math.max(
+                  -0.1,
+                  Math.min(0.3, seekLeads[i] - drift / rate)
+                );
+              }
+              seekPending[i] = false;
+              var tolerance =
+                (outputVolume(i) > 0
+                  ? SYNC_TOLERANCE_AUDIBLE
+                  : SYNC_TOLERANCE_SILENT) * rate;
+              if (Math.abs(drift) <= tolerance) continue;
+            }
+            // On a loop track 1 is restarting too, so no lead is needed.
+            stem.currentTime = looped ? now : now + seekLeads[i] * rate;
+            seekPending[i] = !looped;
+            if (stem.paused) {
+              stem.play().catch(function (err) {
+                console.error("Error playing audio:", err);
+              });
+            }
+          }
         }
 
         var cornerDupTimer = null;
@@ -1109,6 +1446,7 @@
             innerMicrobes[i].remove();
           }
           innerMicrobes.length = 0;
+          for (var k = 0; k < stemAccents.length; k++) stemAccents[k] = 0;
         }
 
         function resetCorners() {
@@ -1140,9 +1478,16 @@
           resetCorners();
         });
 
-        function updateTrackVolumes() {
-          if (!isPlaying) return;
-          var trackCounts = [0, 0, 0, 0, 0, 0, 0];
+        function stemTargetVolume(count) {
+          if (count <= 0) return 0;
+          var first = audioSettings.stemFirstVolume;
+          var full = audioSettings.stemFullCount;
+          var growth = full > 1 ? (count - 1) / (full - 1) : 1;
+          return Math.min(first + (1 - first) * growth, 1.0);
+        }
+
+        function updateTrackVolumes(dt) {
+          for (var c = 0; c < trackCounts.length; c++) trackCounts[c] = 0;
           for (var i = 0; i < innerMicrobes.length; i++) {
             var ti =
               innerMicrobes[i].dataset.trackIndex != null
@@ -1150,12 +1495,50 @@
                 : 0;
             if (ti >= 1 && ti <= 6) trackCounts[ti] += 1;
           }
-          var MAX_VOLUME_UNITS = 20;
-          for (var trackIndex = 1; trackIndex <= 6; trackIndex++) {
-            var audio = audioPlayers[trackIndex];
-            var count = trackCounts[trackIndex] || 0;
-            audio.volume = Math.min(count / MAX_VOLUME_UNITS, 1.0);
+          var seconds = (dt || 1) / 60;
+          var release = Math.max(0.05, audioSettings.entranceReleaseSeconds);
+          var fadeOut = Math.max(0.05, audioSettings.fadeOutSeconds);
+          var fadeIn = Math.max(0.01, audioSettings.fadeInSeconds);
+          var accents = [];
+          for (var k = 0; k < stemAccents.length; k++) {
+            stemAccents[k] = Math.max(0, stemAccents[k] - seconds);
+            accents.push(Math.min(1, stemAccents[k] / release));
           }
+          for (var trackIndex = 0; trackIndex <= 6; trackIndex++) {
+            var level = stemLevels[trackIndex];
+            if (trackIndex > 0) {
+              var target = stemTargetVolume(trackCounts[trackIndex]);
+              level =
+                target > level
+                  ? target
+                  : Math.max(target, level - seconds / fadeOut);
+              stemLevels[trackIndex] = level;
+            }
+            var othersAccent = 0;
+            for (var j = 0; j < accents.length; j++) {
+              if (j !== trackIndex) othersAccent = Math.max(othersAccent, accents[j]);
+            }
+            var desired =
+              (level + (1 - level) * accents[trackIndex]) *
+              (1 - audioSettings.entranceDuck * othersAccent);
+            var step = seconds / fadeIn;
+            var volume = stemVolumes[trackIndex];
+            volume =
+              desired > volume
+                ? Math.min(desired, volume + step)
+                : Math.max(desired, volume - step);
+            stemVolumes[trackIndex] = volume;
+            var audio = audioPlayers[trackIndex];
+            var output = outputVolume(trackIndex);
+            if (audio && audio.volume !== output) audio.volume = output;
+          }
+        }
+
+        function accentTrack(trackIndex) {
+          if (!audioSettings.entranceEnabled) return;
+          stemAccents[trackIndex] =
+            audioSettings.entranceHoldSeconds +
+            audioSettings.entranceReleaseSeconds;
         }
 
         var lastSpawnSrc = null;
@@ -1275,7 +1658,8 @@
             window.startHandsCamera();
           }
           scheduleCornerDuplicates();
-          playAllTracks();
+          if (document.readyState === "complete") playAllTracks();
+          else window.addEventListener("load", playAllTracks, { once: true });
           setTimeout(function () {
             ethanolButton.classList.add("show");
           }, 10000);
@@ -1400,6 +1784,40 @@
           panel.classList.toggle("open");
           if (panel.classList.contains("open")) fillWebcams();
         });
+
+        var audioOverlay = document.getElementById("audio-overlay");
+        var audioFrame = audioOverlay.querySelector("iframe");
+
+        function setAudioOverlay(open) {
+          // Loaded on first open so the panel costs nothing until needed.
+          if (open && !audioFrame.getAttribute("src")) {
+            audioFrame.src = "audio-control.html";
+          }
+          audioOverlay.classList.toggle("open", open);
+          if (open) audioFrame.focus();
+        }
+
+        window.addEventListener("keydown", function (e) {
+          if (e.repeat) return;
+          if (e.key === "m" || e.key === "M") {
+            setAudioOverlay(!audioOverlay.classList.contains("open"));
+          } else if (e.key === "Escape") {
+            setAudioOverlay(false);
+          }
+        });
+
+        window.addEventListener("message", function (e) {
+          if (e.origin !== location.origin) return;
+          if (e.data && e.data.type === "close-audio-control") {
+            setAudioOverlay(false);
+          }
+        });
+
+        document
+          .getElementById("audio-overlay-close")
+          .addEventListener("click", function () {
+            setAudioOverlay(false);
+          });
       })();
     </script>
   </body>
